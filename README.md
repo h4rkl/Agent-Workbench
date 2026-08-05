@@ -1,0 +1,207 @@
+# Local Agent Workbench
+
+A Copilot-free VS Code workbench for running your installed **Claude Code** and
+**OpenAI Codex CLI** agents. It presents an Agents-style, full-editor interface
+while launching the real local CLIs with their existing user directories,
+credentials, configuration, rules, skills, and session history.
+
+The extension does not sign in to GitHub Copilot and does not proxy prompts
+through a VS Code chat provider.
+
+## What is included
+
+- A full custom editor with sessions, conversation, tool/reasoning events, and
+  workspace changes in one three-pane layout
+- Resizable and collapsible side panes, compact/comfortable density, and a
+  configurable accent color
+- Direct adapters for `claude` stream JSON and `codex exec --json`
+- New and resumed sessions for either provider
+- Import from `~/.claude/projects` and `~/.codex/sessions`, or custom user dirs
+- Model and permission selection per session
+- Live response streaming, tool cards, cancellation, CLI health, and raw logs
+- Git status with click-to-open diffs and files
+- Local session metadata persisted with mode `0600`
+- A status-bar toggle, editor-title toggle, command-palette commands, and
+  `Cmd+Alt+A` / `Ctrl+Alt+A`
+- A detach action that moves the workbench editor into its own VS Code window
+
+## Requirements
+
+- VS Code 1.104 or newer
+- Node.js 22 or newer for building the extension
+- At least one installed and authenticated CLI:
+
+```bash
+claude --version
+codex --version
+```
+
+Authentication stays owned by each CLI. Complete `claude` and/or `codex login`
+in a terminal before starting a workbench session if the relevant CLI is not
+already authenticated.
+
+## Build and install
+
+The repository is intended to live at `~/Sites/vs-code-agent`.
+
+```bash
+cd ~/Sites/vs-code-agent
+pnpm install
+pnpm run package
+code --install-extension ./local-agent-workbench-0.1.0.vsix --force
+```
+
+Reload VS Code after installation. If the `code` shell command is unavailable,
+open **Extensions: Install from VSIX…** from the Command Palette and choose
+`local-agent-workbench-0.1.0.vsix`.
+
+`pnpm run package` performs the typecheck, unit tests, production build, and VSIX
+packaging. For a faster unpackaged build:
+
+```bash
+pnpm run check
+```
+
+## Development
+
+Open this directory in VS Code:
+
+```bash
+cd ~/Sites/vs-code-agent
+code .
+pnpm install
+```
+
+Press `F5` to launch an Extension Development Host. The launch task starts the
+esbuild watcher automatically. In the development window, run **Local Agents:
+Open Workbench**.
+
+Individual scripts:
+
+```bash
+pnpm run watch       # rebuild extension host code on changes
+pnpm run typecheck   # strict TypeScript check
+pnpm run check:ui    # syntax-check the webview runtime
+pnpm test            # JSONL adapter tests
+pnpm run build       # production extension bundle
+pnpm run package     # verified .vsix package
+```
+
+The webview assets under `media/` are loaded directly, so reload the Extension
+Development Host after changing the workbench JavaScript or CSS.
+
+## Use
+
+1. Click **Local Agents** in the status bar, use the sparkle button in the
+   editor title, or run **Local Agents: Toggle Workbench**.
+2. Choose **New session**, then select Claude or Codex, a local workspace, the
+   permission boundary, and an optional model.
+3. Enter a prompt. Use `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere to send.
+4. Inspect modified files in the right pane. Clicking a file opens its Git diff.
+5. Use the window icon in the top bar—or **Local Agents: Open Workbench in New
+   Window**—for a separate Agents-style window.
+
+Use **Import local history** to scan the configured CLI user directories. An
+imported session keeps its native session ID, so the next prompt resumes it
+through the owning CLI.
+
+## Configuration
+
+Open Settings and search for `Local Agent Workbench`.
+
+| Setting                                     | Default           | Purpose                                           |
+| ------------------------------------------- | ----------------- | ------------------------------------------------- |
+| `localAgentWorkbench.claude.executable`     | `claude`          | Executable name or absolute path                  |
+| `localAgentWorkbench.claude.userDirectory`  | `~/.claude`       | Claude authentication, settings, and history      |
+| `localAgentWorkbench.claude.defaultModel`   | empty             | Model/alias passed to Claude                      |
+| `localAgentWorkbench.codex.executable`      | `codex`           | Executable name or absolute path                  |
+| `localAgentWorkbench.codex.userDirectory`   | `~/.codex`        | `CODEX_HOME`, including auth, config, and history |
+| `localAgentWorkbench.codex.defaultModel`    | empty             | Model passed to Codex                             |
+| `localAgentWorkbench.dataDirectory`         | `~/.vscode-agent` | Workbench metadata location                       |
+| `localAgentWorkbench.defaultProvider`       | `claude`          | Provider preselected for new sessions             |
+| `localAgentWorkbench.defaultPermission`     | `workspace-write` | Initial access boundary                           |
+| `localAgentWorkbench.showStatusBarButton`   | `true`            | Show/hide the status-bar toggle                   |
+| `localAgentWorkbench.appearance.accent`     | `#8b5cf6`         | Workbench accent CSS color                        |
+| `localAgentWorkbench.appearance.density`    | `comfortable`     | Compact or comfortable UI                         |
+| `localAgentWorkbench.discovery.maxSessions` | `200`             | Maximum native sessions to scan                   |
+
+Paths beginning with `~` are expanded. Executables are resolved from `PATH`
+plus common local macOS locations, including NVM installations.
+
+### Using separate user directories
+
+To use a non-default profile, point the relevant setting at it:
+
+```json
+{
+  "localAgentWorkbench.claude.userDirectory": "~/.claude-work",
+  "localAgentWorkbench.codex.userDirectory": "~/.codex-work"
+}
+```
+
+The extension starts Claude with `CLAUDE_CONFIG_DIR` and Codex with
+`CODEX_HOME`, so each provider loads that profile directly.
+
+## Permission behavior
+
+| Workbench mode | Codex                          | Claude Code                                           |
+| -------------- | ------------------------------ | ----------------------------------------------------- |
+| Plan           | Read-only Codex sandbox        | `plan` permission mode                                |
+| Read only      | Read-only Codex sandbox        | `dontAsk`, with edit/write/notebook/Bash tools denied |
+| Workspace      | Workspace-write Codex sandbox  | `acceptEdits` permission mode                         |
+| Full access    | Bypasses approvals and sandbox | Skips permission checks                               |
+
+Claude Code does not expose a Codex-equivalent filesystem sandbox. Its
+`acceptEdits` boundary is therefore governed by Claude's permission system and
+your Claude settings; treat it differently from Codex's OS sandbox. Full access
+is intentionally guarded by a modal confirmation per workspace.
+
+The extension also asks you to trust a workspace before its first agent run.
+
+## Storage and privacy
+
+- Workbench session metadata is stored in
+  `~/.vscode-agent/sessions.json` by default.
+- Native Claude and Codex transcripts remain in their provider-owned user
+  directories. Removing a session from the workbench does not delete them.
+- Prompts and output pass between the webview, the extension host, and the local
+  CLI process. The extension itself has no telemetry or network client.
+- The provider CLIs may make network requests according to their own
+  configuration and terms.
+- Raw JSONL and stderr are available in **Output: Local Agent Workbench** for
+  troubleshooting.
+
+## Architecture
+
+```text
+Custom editor webview
+  ├─ session/workspace/change controls
+  └─ VS Code message bridge
+       ├─ local metadata store (~/.vscode-agent)
+       ├─ native history discovery (~/.claude, ~/.codex)
+       ├─ Git status/diff integration
+       └─ child process adapter
+            ├─ claude --print --output-format stream-json
+            └─ codex exec --json
+```
+
+No shell is used to launch provider processes; arguments are passed directly to
+the executable.
+
+## Supported-surface limitation
+
+VS Code does not provide a public extension API for injecting arbitrary local
+providers into the first-party Copilot **New Agent Session** dropdown or for
+copying the private **Open in Agents** implementation. This extension supplies
+an independent custom editor that uses supported webview APIs and moves that
+editor into a new window when requested. It is intentionally similar in
+workflow, but it does not modify VS Code internals or require Copilot.
+
+Provider JSONL formats can evolve. If a CLI update stops rendering an event,
+check **Local Agents: Check CLI Installations** and the output channel, then add
+a fixture to `test/agentEvents.test.ts` before updating the parser.
+
+## License
+
+Apache License 2.0. This project is independent of Microsoft, Anthropic, and OpenAI. Product
+names belong to their respective owners.

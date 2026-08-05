@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Local Agent Workbench</title>
+  <desc id="desc">A minimal robot face shaped like a speech bubble</desc>
+  <defs>
+    <filter id="shadow" x="-30%" y="-100%" width="160%" height="300%">
+      <feGaussianBlur stdDeviation="7"/>
+    </filter>
+  </defs>
+
+  <rect width="512" height="512" rx="72" fill="#fff"/>
+
+  <ellipse cx="256" cy="466" rx="76" ry="7" fill="#a7b4ba" opacity=".34" filter="url(#shadow)"/>
+
+  <g fill="#000">
+    <path d="M156 290c3 33 16 63 39 86l85 63v-81h-71z"/>
+    <circle cx="112" cy="238" r="38"/>
+    <circle cx="400" cy="238" r="38"/>
+    <path d="M216 88h80c58 0 104 47 104 106v90c0 59-46 106-104 106h-80c-58 0-104-47-104-106v-90c0-59 46-106 104-106z"/>
+  </g>
+
+  <rect x="150" y="136" width="212" height="194" rx="88" fill="#fff"/>
+  <circle cx="216" cy="233" r="23" fill="#000"/>
+  <circle cx="296" cy="233" r="23" fill="#000"/>
+</svg>

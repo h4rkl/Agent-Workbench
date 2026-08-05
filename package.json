@@ -1,0 +1,211 @@
+{
+  "name": "local-agent-workbench",
+  "displayName": "Local Agent Workbench",
+  "description": "A Copilot-free, Agents-style workbench for local Claude Code and OpenAI Codex CLI sessions.",
+  "version": "0.1.0",
+  "publisher": "local-agent-workbench",
+  "license": "Apache-2.0",
+  "engines": {
+    "vscode": "^1.104.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Other"
+  ],
+  "keywords": [
+    "claude-code",
+    "codex",
+    "agents",
+    "local",
+    "copilot-free"
+  ],
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onStartupFinished",
+    "onWebviewPanel:localAgentWorkbench.panel",
+    "onCommand:localAgentWorkbench.toggle",
+    "onCommand:localAgentWorkbench.open",
+    "onCommand:localAgentWorkbench.openInNewWindow",
+    "onCommand:localAgentWorkbench.newSession",
+    "onCommand:localAgentWorkbench.checkAgents"
+  ],
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": false,
+      "description": "Local coding agents can read files, edit files, and run commands. Trust the workspace before starting an agent."
+    },
+    "virtualWorkspaces": {
+      "supported": false,
+      "description": "The extension launches local CLI processes and requires a local filesystem."
+    }
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "localAgentWorkbench.toggle",
+        "title": "Local Agents: Toggle Workbench",
+        "category": "Local Agents",
+        "icon": "$(sparkle-filled)"
+      },
+      {
+        "command": "localAgentWorkbench.open",
+        "title": "Local Agents: Open Workbench",
+        "category": "Local Agents",
+        "icon": "$(sparkle-filled)"
+      },
+      {
+        "command": "localAgentWorkbench.openInNewWindow",
+        "title": "Local Agents: Open Workbench in New Window",
+        "category": "Local Agents",
+        "icon": "$(multiple-windows)"
+      },
+      {
+        "command": "localAgentWorkbench.newSession",
+        "title": "Local Agents: New Session",
+        "category": "Local Agents",
+        "icon": "$(add)"
+      },
+      {
+        "command": "localAgentWorkbench.checkAgents",
+        "title": "Local Agents: Check CLI Installations",
+        "category": "Local Agents",
+        "icon": "$(pulse)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "localAgentWorkbench.toggle",
+          "group": "navigation@99",
+          "when": "shellExecutionSupported"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "localAgentWorkbench.toggle",
+        "key": "ctrl+alt+a",
+        "mac": "cmd+alt+a"
+      }
+    ],
+    "configuration": {
+      "title": "Local Agent Workbench",
+      "properties": {
+        "localAgentWorkbench.dataDirectory": {
+          "type": "string",
+          "default": "~/.vscode-agent",
+          "scope": "machine",
+          "description": "Directory used for Local Agent Workbench metadata. Tilde expansion is supported."
+        },
+        "localAgentWorkbench.claude.executable": {
+          "type": "string",
+          "default": "claude",
+          "scope": "machine",
+          "description": "Claude Code executable name or absolute path."
+        },
+        "localAgentWorkbench.claude.userDirectory": {
+          "type": "string",
+          "default": "~/.claude",
+          "scope": "machine",
+          "description": "Claude Code user directory used for authentication, settings, and session discovery."
+        },
+        "localAgentWorkbench.claude.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Default Claude model or alias. Leave empty to use Claude Code configuration."
+        },
+        "localAgentWorkbench.codex.executable": {
+          "type": "string",
+          "default": "codex",
+          "scope": "machine",
+          "description": "Codex CLI executable name or absolute path."
+        },
+        "localAgentWorkbench.codex.userDirectory": {
+          "type": "string",
+          "default": "~/.codex",
+          "scope": "machine",
+          "description": "Codex home used for authentication, config.toml, rules, skills, and session discovery."
+        },
+        "localAgentWorkbench.codex.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Default Codex model. Leave empty to use the active Codex configuration."
+        },
+        "localAgentWorkbench.defaultProvider": {
+          "type": "string",
+          "enum": [
+            "claude",
+            "codex"
+          ],
+          "enumDescriptions": [
+            "Claude Code",
+            "OpenAI Codex CLI"
+          ],
+          "default": "claude",
+          "description": "Provider selected for new sessions."
+        },
+        "localAgentWorkbench.defaultPermission": {
+          "type": "string",
+          "enum": [
+            "plan",
+            "read-only",
+            "workspace-write",
+            "full-access"
+          ],
+          "enumDescriptions": [
+            "Plan without modifying the workspace.",
+            "Read files but deny edits and mutating commands.",
+            "Allow edits and commands inside the selected workspace.",
+            "Bypass provider approvals and sandboxing. Use only in an external sandbox."
+          ],
+          "default": "workspace-write",
+          "description": "Default permission boundary for new sessions."
+        },
+        "localAgentWorkbench.showStatusBarButton": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show a Local Agents toggle in the VS Code status bar."
+        },
+        "localAgentWorkbench.appearance.accent": {
+          "type": "string",
+          "default": "#8b5cf6",
+          "description": "CSS color used as the workbench accent."
+        },
+        "localAgentWorkbench.appearance.density": {
+          "type": "string",
+          "enum": [
+            "compact",
+            "comfortable"
+          ],
+          "default": "comfortable",
+          "description": "Default information density of the custom workbench."
+        },
+        "localAgentWorkbench.discovery.maxSessions": {
+          "type": "number",
+          "default": 200,
+          "minimum": 10,
+          "maximum": 1000,
+          "description": "Maximum number of native Claude and Codex sessions scanned from the user directories."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "check:ui": "node --check media/workbench.js",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run check:ui && npm run test && npm run build",
+    "package": "npm run check && vsce package --no-dependencies --allow-missing-repository"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/vscode": "^1.104.0",
+    "@vscode/vsce": "^3.6.0",
+    "esbuild": "^0.25.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

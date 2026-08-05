@@ -1,0 +1,26 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "type": "npm",
+      "script": "watch",
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "esbuild",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": "Watching extension sources",
+          "endsPattern": "Watching extension sources"
+        }
+      },
+      "presentation": {
+        "reveal": "never"
+      },
+      "group": "build",
+      "label": "npm: watch"
+    }
+  ]
+}
