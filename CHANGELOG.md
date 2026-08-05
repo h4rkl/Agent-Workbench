@@ -3,7 +3,10 @@
 ## 0.1.0
 
 - Initial Local Agent Workbench release
-- Custom Agents-style editor with resizable session and changes panes
+- Agents-style editor centered on parallel Git worktrees
+- Worktree discovery and creation with per-tree agent activity and dirty state
+- Repository-wide history graph and commit file inspection
+- Lazy file browsing, worktree opening, and editor-selection prompt context
 - Direct Claude Code and Codex CLI streaming adapters
 - Persistent and resumable workbench sessions
 - Native Claude/Codex history discovery and import

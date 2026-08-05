@@ -10,16 +10,21 @@ through a VS Code chat provider.
 
 ## What is included
 
-- A full custom editor with sessions, conversation, tool/reasoning events, and
-  workspace changes in one three-pane layout
-- Resizable and collapsible side panes, compact/comfortable density, and a
-  configurable accent color
+- A worktree-first three-pane editor for launching parallel agents on isolated
+  Git branches
+- Worktree status, running-agent activity, repository-wide commit history, and
+  commit file inspection in one view
+- Resizable side panes, compact/comfortable density, and a configurable accent
+  color
 - Direct adapters for `claude` stream JSON and `codex exec --json`
 - New and resumed sessions for either provider
 - Import from `~/.claude/projects` and `~/.codex/sessions`, or custom user dirs
 - Model and permission selection per session
 - Live response streaming, tool cards, cancellation, CLI health, and raw logs
-- Git status with click-to-open diffs and files
+- Git status with click-to-open diffs, lazy workspace browsing, and an
+  Agents-style history graph across every ref
+- One-click worktree opening in a separate VS Code window
+- Editor-selection context for targeted file-and-line feedback to an agent
 - Local session metadata persisted with mode `0600`
 - A status-bar toggle, editor-title toggle, command-palette commands, and
   `Cmd+Alt+A` / `Ctrl+Alt+A`
@@ -28,7 +33,7 @@ through a VS Code chat provider.
 ## Requirements
 
 - VS Code 1.104 or newer
-- Node.js 22 or newer for building the extension
+- Node.js 24 for building the extension (see `.nvmrc`)
 - At least one installed and authenticated CLI:
 
 ```bash
@@ -94,12 +99,19 @@ Development Host after changing the workbench JavaScript or CSS.
 
 1. Click **Local Agents** in the status bar, use the sparkle button in the
    editor title, or run **Local Agents: Toggle Workbench**.
-2. Choose **New session**, then select Claude or Codex, a local workspace, the
-   permission boundary, and an optional model.
-3. Enter a prompt. Use `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere to send.
-4. Inspect modified files in the right pane. Clicking a file opens its Git diff.
-5. Use the window icon in the top bar—or **Local Agents: Open Workbench in New
-   Window**—for a separate Agents-style window.
+2. Choose **New parallel task**, select Claude or Codex, and describe the work.
+   Keep **New Worktree** enabled to create an `agent/<task>-<timestamp>` branch
+   in a sibling `<repository>-worktrees` directory before the agent starts.
+   **Commit result** asks the agent to verify and commit its intended changes.
+3. Launch additional agents the same way. The left pane shows every worktree,
+   dirty-file count, and running agents. Use **New agent here** when follow-up
+   work should continue on an existing worktree.
+4. Open **Repository history** to inspect commits across all branches. Select a
+   commit to see its changed files and open the committed content.
+5. Select a worktree and use **Open in VS Code** to work in it directly. Select
+   lines in an editor and use the composer’s **+** button to attach those exact
+   lines to targeted agent feedback.
+6. Use `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere to submit a prompt.
 
 Use **Import local history** to scan the configured CLI user directories. An
 imported session keeps its native session ID, so the next prompt resumes it
@@ -175,11 +187,13 @@ The extension also asks you to trust a workspace before its first agent run.
 
 ```text
 Custom editor webview
-  ├─ session/workspace/change controls
+  ├─ worktree/agent orchestration
+  ├─ repository history graph and commit inspection
+  ├─ workspace files, changes, and editor-selection context
   └─ VS Code message bridge
        ├─ local metadata store (~/.vscode-agent)
        ├─ native history discovery (~/.claude, ~/.codex)
-       ├─ Git status/diff integration
+       ├─ Git worktree/status/history integration
        └─ child process adapter
             ├─ claude --print --output-format stream-json
             └─ codex exec --json
@@ -193,9 +207,8 @@ the executable.
 VS Code does not provide a public extension API for injecting arbitrary local
 providers into the first-party Copilot **New Agent Session** dropdown or for
 copying the private **Open in Agents** implementation. This extension supplies
-an independent custom editor that uses supported webview APIs and moves that
-editor into a new window when requested. It is intentionally similar in
-workflow, but it does not modify VS Code internals or require Copilot.
+an independent custom editor built with supported webview and Git APIs. It is
+similar in workflow, but does not modify VS Code internals or require Copilot.
 
 Provider JSONL formats can evolve. If a CLI update stops rendering an event,
 check **Local Agents: Check CLI Installations** and the output channel, then add

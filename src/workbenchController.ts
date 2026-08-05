@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { stat } from "node:fs/promises";
+import { readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
@@ -20,11 +20,15 @@ import type {
   AgentProvider,
   AgentSession,
   CliHealth,
+  GitCommit,
+  GitCommitFile,
   PermissionMode,
   RunningAgent,
+  WorktreeInfo,
   WorkbenchSnapshot,
   WorkspaceChange,
-  WorkspaceEntry
+  WorkspaceEntry,
+  WorkspaceFileEntry
 } from "./types";
 import { getWebviewHtml } from "./webviewHtml";
 
@@ -39,6 +43,13 @@ interface ActiveRun {
   reasoningMessageId?: string;
   runId: string;
   hadError: boolean;
+}
+
+interface EditorContext {
+  path: string;
+  startLine: number;
+  endLine: number;
+  text: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -96,6 +107,13 @@ export class WorkbenchController implements vscode.Disposable {
   private sessions: AgentSession[] = [];
   private activeSessionId: string | undefined;
   private changes: WorkspaceChange[] = [];
+  private files: WorkspaceFileEntry[] = [];
+  private branch = "";
+  private repositoryRoot: string | undefined;
+  private worktrees: WorktreeInfo[] = [];
+  private commits: GitCommit[] = [];
+  private selectedWorktreePath: string | undefined;
+  private lastEditorContext: EditorContext | undefined;
   private health: Record<AgentProvider, CliHealth> = {
     claude: {
       provider: "claude",
@@ -118,6 +136,9 @@ export class WorkbenchController implements vscode.Disposable {
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(this.output);
     this.configureStatusBar();
+    if (vscode.window.activeTextEditor) {
+      this.lastEditorContext = this.editorContext(vscode.window.activeTextEditor);
+    }
     this.disposables.push(
       vscode.workspace.onDidChangeConfiguration(async (event) => {
         if (!event.affectsConfiguration("localAgentWorkbench")) {
@@ -132,11 +153,19 @@ export class WorkbenchController implements vscode.Disposable {
           this.sessions = loaded.sessions;
           this.activeSessionId = loaded.activeSessionId;
         }
-        await Promise.all([this.checkHealth(), this.refreshChanges()]);
+        await Promise.all([this.checkHealth(), this.refreshWorkspaceData()]);
         await this.postSnapshot();
       }),
       vscode.workspace.onDidChangeWorkspaceFolders(() => {
-        void this.postSnapshot();
+        void this.refreshWorkspaceData().then(() => this.postSnapshot());
+      }),
+      vscode.window.onDidChangeTextEditorSelection((event) => {
+        this.lastEditorContext = this.editorContext(event.textEditor);
+      }),
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor) {
+          this.lastEditorContext = this.editorContext(editor);
+        }
       })
     );
   }
@@ -156,7 +185,7 @@ export class WorkbenchController implements vscode.Disposable {
         this.sessions.some((session) => session.id === loaded.activeSessionId)
           ? loaded.activeSessionId
           : this.sessions.find((session) => session.status !== "archived")?.id;
-      await Promise.all([this.checkHealth(), this.refreshChanges()]);
+      await Promise.all([this.checkHealth(), this.refreshWorkspaceData()]);
       this.initialized = true;
     })();
     return this.initialization;
@@ -323,6 +352,31 @@ export class WorkbenchController implements vscode.Disposable {
         case "refreshChanges":
           await this.refreshChanges(true);
           break;
+        case "refreshFiles":
+          await this.refreshFiles(true);
+          break;
+        case "listDirectory":
+          await this.listDirectory(message);
+          break;
+        case "selectWorktree":
+          await this.selectWorktree(stringField(message, "path"));
+          break;
+        case "refreshRepository":
+          await this.refreshWorkspaceData();
+          await this.postSnapshot();
+          break;
+        case "loadCommit":
+          await this.loadCommit(stringField(message, "hash"));
+          break;
+        case "openCommitFile":
+          await this.openCommitFile(message);
+          break;
+        case "openWorktree":
+          await this.openWorktree(message);
+          break;
+        case "captureEditorSelection":
+          await this.captureEditorSelection();
+          break;
         case "openFile":
           await this.openWorkspaceFile(message, false);
           break;
@@ -366,12 +420,13 @@ export class WorkbenchController implements vscode.Disposable {
       return;
     }
     this.activeSessionId = sessionId;
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    this.selectedWorktreePath = this.getActiveSession()?.workspace;
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
   }
 
   private async createSession(message: WebviewMessage): Promise<void> {
-    const workspace = stringField(message, "workspace");
+    let workspace = stringField(message, "workspace");
     const provider = providerField(message.provider) ?? this.config.defaultProvider;
     const permission =
       permissionField(message.permission) ?? this.config.defaultPermission;
@@ -384,6 +439,15 @@ export class WorkbenchController implements vscode.Disposable {
     if (!metadata.isDirectory()) {
       throw new Error("The selected workspace is not a directory.");
     }
+    const prompt = stringField(message, "prompt")?.trim();
+    if (message.newWorktree === true) {
+      const worktree = await this.git.createWorktree(
+        workspace,
+        prompt || requestedTitle || `${provider} session`
+      );
+      workspace = worktree.workspace;
+    }
+    this.selectedWorktreePath = workspace;
     const timestamp = now();
     const session: AgentSession = {
       id: randomUUID(),
@@ -400,8 +464,11 @@ export class WorkbenchController implements vscode.Disposable {
     };
     this.sessions.unshift(session);
     this.activeSessionId = session.id;
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
+    if (prompt) {
+      await this.sendPrompt({ type: "sendPrompt", sessionId: session.id, prompt });
+    }
   }
 
   private async sendPrompt(message: WebviewMessage): Promise<void> {
@@ -494,7 +561,7 @@ export class WorkbenchController implements vscode.Disposable {
         ? "Run failed"
         : "Completed";
     session.updatedAt = now();
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
   }
 
@@ -652,7 +719,7 @@ export class WorkbenchController implements vscode.Disposable {
     this.activeSessionId = this.sessions.find(
       (candidate) => candidate.status !== "archived"
     )?.id;
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
   }
 
@@ -669,7 +736,7 @@ export class WorkbenchController implements vscode.Disposable {
         (candidate) => candidate.id !== session.id && candidate.status !== "archived"
       )?.id;
     }
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
   }
 
@@ -719,14 +786,189 @@ export class WorkbenchController implements vscode.Disposable {
   }
 
   private async refreshChanges(post = false): Promise<void> {
-    const session = this.getActiveSession();
-    this.changes = session ? await this.git.listChanges(session.workspace) : [];
+    const workspace = this.fileWorkspaceEntry();
+    if (workspace) {
+      [this.changes, this.branch] = await Promise.all([
+        this.git.listChanges(workspace.path),
+        this.git.currentBranch(workspace.path)
+      ]);
+    } else {
+      this.changes = [];
+      this.branch = "";
+    }
     if (post) {
       await this.panel?.webview.postMessage({
         type: "changes",
-        changes: this.changes
+        changes: this.changes,
+        branch: this.branch
       });
     }
+  }
+
+  private async refreshFiles(post = false): Promise<void> {
+    const workspace = this.fileWorkspaceEntry();
+    this.files = workspace ? await this.readDirectory(workspace.path, "") : [];
+    if (post) {
+      await this.panel?.webview.postMessage({
+        type: "files",
+        files: this.files,
+        workspace
+      });
+    }
+  }
+
+  private async refreshWorkspaceData(): Promise<void> {
+    await this.refreshRepositoryData();
+    await Promise.all([this.refreshChanges(), this.refreshFiles()]);
+  }
+
+  private async refreshRepositoryData(): Promise<void> {
+    const seed = this.repositorySeedPath();
+    if (!seed) {
+      this.repositoryRoot = undefined;
+      this.worktrees = [];
+      this.commits = [];
+      return;
+    }
+    this.repositoryRoot = await this.git.repositoryRoot(seed);
+    if (!this.repositoryRoot) {
+      this.worktrees = [];
+      this.commits = [];
+      return;
+    }
+    [this.worktrees, this.commits] = await Promise.all([
+      this.git.listWorktrees(this.repositoryRoot),
+      this.git.listHistory(this.repositoryRoot)
+    ]);
+    if (!this.selectedWorktreePath || !this.worktrees.some((item) => item.path === this.selectedWorktreePath)) {
+      this.selectedWorktreePath = this.worktrees.find((item) => item.path === seed)?.path
+        || this.worktrees.find((item) => item.isMain)?.path
+        || this.worktrees[0]?.path;
+    }
+  }
+
+  private async selectWorktree(worktreePath: string | undefined): Promise<void> {
+    const worktree = this.worktrees.find((item) => item.path === worktreePath);
+    if (!worktree) {
+      return;
+    }
+    this.selectedWorktreePath = worktree.path;
+    const latestSession = [...this.sessions]
+      .filter((session) => session.workspace === worktree.path && session.status !== "archived")
+      .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))[0];
+    if (latestSession) {
+      this.activeSessionId = latestSession.id;
+    }
+    await Promise.all([this.refreshChanges(), this.refreshFiles(), this.queueSave()]);
+    await this.postSnapshot();
+  }
+
+  private async loadCommit(hash: string | undefined): Promise<void> {
+    const workspace = this.fileWorkspaceEntry();
+    if (!workspace || !hash) {
+      return;
+    }
+    const files: GitCommitFile[] = await this.git.commitFiles(workspace.path, hash);
+    await this.panel?.webview.postMessage({ type: "commitFiles", hash, files });
+  }
+
+  private async openCommitFile(message: WebviewMessage): Promise<void> {
+    const workspace = this.fileWorkspaceEntry();
+    const hash = stringField(message, "hash");
+    const relativePath = stringField(message, "path");
+    if (!workspace || !hash || !relativePath) {
+      return;
+    }
+    const content = await this.git.fileAtCommit(workspace.path, hash, relativePath);
+    const document = await vscode.workspace.openTextDocument({ content });
+    await vscode.window.showTextDocument(document, { preview: false });
+  }
+
+  private async openWorktree(message: WebviewMessage): Promise<void> {
+    const worktreePath = stringField(message, "path") ?? this.selectedWorktreePath;
+    if (!worktreePath || !this.worktrees.some((item) => item.path === worktreePath)) {
+      throw new Error("Choose a known worktree before opening it.");
+    }
+    await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(worktreePath), {
+      forceNewWindow: message.newWindow !== false
+    });
+  }
+
+  private async captureEditorSelection(): Promise<void> {
+    const editor = vscode.window.activeTextEditor;
+    const context = editor ? this.editorContext(editor) : this.lastEditorContext;
+    if (!context) {
+      throw new Error("Open a file and select code before attaching editor context.");
+    }
+    await this.panel?.webview.postMessage({ type: "editorContext", context });
+  }
+
+  private editorContext(editor: vscode.TextEditor): EditorContext | undefined {
+    if (editor.document.uri.scheme !== "file") {
+      return undefined;
+    }
+    let selection = editor.selection;
+    if (selection.isEmpty) {
+      const line = editor.document.lineAt(selection.active.line);
+      selection = new vscode.Selection(line.range.start, line.range.end);
+    }
+    const workspace = this.fileWorkspaceEntry();
+    const absolutePath = editor.document.uri.fsPath;
+    const relativePath = workspace
+      ? path.relative(workspace.path, absolutePath).split(path.sep).join("/")
+      : absolutePath;
+    return {
+      path: relativePath.startsWith("..") ? absolutePath : relativePath,
+      startLine: selection.start.line + 1,
+      endLine: selection.end.line + 1,
+      text: editor.document.getText(selection).slice(0, 30_000)
+    };
+  }
+
+  private async listDirectory(message: WebviewMessage): Promise<void> {
+    const workspace = this.fileWorkspaceEntry();
+    const relativePath = stringField(message, "path") ?? "";
+    if (!workspace) {
+      return;
+    }
+    const entries = await this.readDirectory(workspace.path, relativePath);
+    await this.panel?.webview.postMessage({
+      type: "directory",
+      path: relativePath,
+      entries
+    });
+  }
+
+  private async readDirectory(
+    workspace: string,
+    relativePath: string
+  ): Promise<WorkspaceFileEntry[]> {
+    const root = path.resolve(workspace);
+    const target = path.resolve(root, relativePath);
+    if (target !== root && !target.startsWith(`${root}${path.sep}`)) {
+      throw new Error("Refusing to list a path outside the selected workspace.");
+    }
+    const entries = await readdir(target, { withFileTypes: true });
+    return entries
+      .filter((entry) => entry.name !== ".git")
+      .map((entry) => {
+        const entryPath = path
+          .relative(root, path.join(target, entry.name))
+          .split(path.sep)
+          .join("/");
+        return {
+          name: entry.name,
+          path: entryPath,
+          type: entry.isDirectory() ? "directory" as const : "file" as const
+        };
+      })
+      .sort((a, b) => {
+        if (a.type !== b.type) {
+          return a.type === "directory" ? -1 : 1;
+        }
+        return a.name.localeCompare(b.name);
+      })
+      .slice(0, 500);
   }
 
   private async openWorkspaceFile(
@@ -734,14 +976,14 @@ export class WorkbenchController implements vscode.Disposable {
     diff: boolean
   ): Promise<void> {
     const relativePath = stringField(message, "path");
-    const session = this.getActiveSession();
-    if (!relativePath || !session) {
+    const workspace = this.fileWorkspaceEntry();
+    if (!relativePath || !workspace) {
       return;
     }
     if (diff) {
-      await this.git.openDiff(session.workspace, relativePath);
+      await this.git.openDiff(workspace.path, relativePath);
     } else {
-      await this.git.openFile(session.workspace, relativePath);
+      await this.git.openFile(workspace.path, relativePath);
     }
   }
 
@@ -774,7 +1016,8 @@ export class WorkbenchController implements vscode.Disposable {
     );
     this.sessions.unshift(session);
     this.activeSessionId = session.id;
-    await Promise.all([this.refreshChanges(), this.queueSave()]);
+    this.selectedWorktreePath = session.workspace;
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
   }
 
@@ -814,6 +1057,27 @@ export class WorkbenchController implements vscode.Disposable {
     return this.sessions.find((session) => session.id === this.activeSessionId);
   }
 
+  private repositorySeedPath(): string | undefined {
+    return this.selectedWorktreePath
+      ?? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      ?? this.getActiveSession()?.workspace;
+  }
+
+  private fileWorkspaceEntry(): WorkspaceEntry | undefined {
+    const selectedPath = this.selectedWorktreePath;
+    if (selectedPath) {
+      return {
+        path: selectedPath,
+        name: path.basename(selectedPath),
+        active: true
+      };
+    }
+    const folder = vscode.workspace.workspaceFolders?.[0];
+    return folder
+      ? { path: folder.uri.fsPath, name: folder.name, active: true }
+      : undefined;
+  }
+
   private workspaceEntries(): WorkspaceEntry[] {
     const entries = new Map<string, WorkspaceEntry>();
     for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -832,7 +1096,16 @@ export class WorkbenchController implements vscode.Disposable {
         });
       }
     }
-    const activeWorkspace = this.getActiveSession()?.workspace;
+    for (const worktree of this.worktrees) {
+      if (!entries.has(worktree.path)) {
+        entries.set(worktree.path, {
+          path: worktree.path,
+          name: path.basename(worktree.path),
+          active: false
+        });
+      }
+    }
+    const activeWorkspace = this.selectedWorktreePath;
     return [...entries.values()]
       .map((entry) => ({ ...entry, active: entry.path === activeWorkspace }))
       .sort((a, b) => Number(b.active) - Number(a.active) || a.name.localeCompare(b.name));
@@ -845,6 +1118,13 @@ export class WorkbenchController implements vscode.Disposable {
       workspaces: this.workspaceEntries(),
       health: this.health,
       changes: this.changes,
+      files: this.files,
+      fileWorkspace: this.fileWorkspaceEntry(),
+      branch: this.branch,
+      repositoryRoot: this.repositoryRoot,
+      worktrees: this.worktrees,
+      commits: this.commits,
+      selectedWorktreePath: this.selectedWorktreePath,
       config: this.config
     };
   }

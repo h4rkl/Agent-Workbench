@@ -63,6 +63,38 @@ export interface WorkspaceChange {
   untracked: boolean;
 }
 
+export interface WorkspaceFileEntry {
+  name: string;
+  path: string;
+  type: "file" | "directory";
+}
+
+export interface WorktreeInfo {
+  path: string;
+  head: string;
+  branch: string;
+  isMain: boolean;
+  detached: boolean;
+  locked: boolean;
+  dirtyCount: number;
+}
+
+export interface GitCommit {
+  hash: string;
+  parents: string[];
+  author: string;
+  email: string;
+  date: string;
+  subject: string;
+  refs: string[];
+}
+
+export interface GitCommitFile {
+  path: string;
+  additions: number;
+  deletions: number;
+}
+
 export interface NativeSessionSummary {
   key: string;
   provider: AgentProvider;
@@ -90,6 +122,13 @@ export interface WorkbenchSnapshot {
   workspaces: WorkspaceEntry[];
   health: Record<AgentProvider, CliHealth>;
   changes: WorkspaceChange[];
+  files: WorkspaceFileEntry[];
+  fileWorkspace?: WorkspaceEntry;
+  branch: string;
+  repositoryRoot?: string;
+  worktrees: WorktreeInfo[];
+  commits: GitCommit[];
+  selectedWorktreePath?: string;
   config: WorkbenchConfigSnapshot;
 }
 
