@@ -19,6 +19,9 @@ export function getWebviewHtml(
   const styleUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "media", "workbench.css")
   );
+  const codiconStyleUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "codicon.css")
+  );
   const scriptNonce = nonce();
 
   return /* html */ `<!doctype html>
@@ -30,13 +33,14 @@ export function getWebviewHtml(
       content="default-src 'none'; img-src ${webview.cspSource} data: https:; font-src ${webview.cspSource}; style-src ${webview.cspSource} 'unsafe-inline'; script-src 'nonce-${scriptNonce}';"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="stylesheet" href="${codiconStyleUri}" />
     <link rel="stylesheet" href="${styleUri}" />
     <title>Local Agents</title>
   </head>
   <body>
     <div id="app" class="app" aria-live="polite">
       <div class="loading-screen">
-        <div class="loading-mark">✦</div>
+        <div class="loading-mark"><span class="codicon codicon-sparkle-filled" aria-hidden="true"></span></div>
         <p>Starting Local Agent Workbench…</p>
       </div>
     </div>

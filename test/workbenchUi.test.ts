@@ -86,5 +86,7 @@ describe("workbench webview", () => {
     expect(app.innerHTML).toContain("New Worktree");
     expect(app.innerHTML).toContain("Repository history");
     expect(app.innerHTML).toContain("repo");
+    expect(app.innerHTML).toContain("codicon-folder");
+    expect(script).toContain('icon: "diff-modified"');
   });
 });

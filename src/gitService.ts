@@ -117,17 +117,33 @@ export class GitService {
     if (!root || !/^[a-f0-9]{7,64}$/i.test(hash)) {
       return [];
     }
-    const { stdout } = await execFileAsync(
-      "git",
-      ["-C", root, "show", "--format=", "--numstat", "--no-renames", hash],
-      { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 }
+    const options = { encoding: "utf8" as const, maxBuffer: 20 * 1024 * 1024 };
+    const [{ stdout: numstat }, { stdout: nameStatus }] = await Promise.all([
+      execFileAsync(
+        "git",
+        ["-C", root, "show", "--format=", "--numstat", "--no-renames", hash],
+        options
+      ),
+      execFileAsync(
+        "git",
+        ["-C", root, "show", "--format=", "--name-status", "--no-renames", hash],
+        options
+      )
+    ]);
+    const statuses = new Map(
+      nameStatus.split("\n").map((line) => {
+        const [status = "M", ...fileParts] = line.split("\t");
+        return [fileParts.join("\t"), status] as const;
+      }).filter(([path]) => Boolean(path))
     );
-    return stdout.split("\n").map((line) => {
+    return numstat.split("\n").map((line) => {
       const [added, deleted, ...fileParts] = line.split("\t");
+      const path = fileParts.join("\t");
       return {
-        path: fileParts.join("\t"),
+        path,
         additions: Number.parseInt(added || "0", 10) || 0,
-        deletions: Number.parseInt(deleted || "0", 10) || 0
+        deletions: Number.parseInt(deleted || "0", 10) || 0,
+        status: statuses.get(path) || "M"
       };
     }).filter((file) => Boolean(file.path));
   }
@@ -137,11 +153,19 @@ export class GitService {
     hash: string,
     relativePath: string
   ): Promise<string> {
+    return this.fileAtRevision(workspace, hash, relativePath);
+  }
+
+  public async fileAtRevision(
+    workspace: string,
+    revision: string,
+    relativePath: string
+  ): Promise<string> {
     const root = await this.repositoryRoot(workspace);
     const normalizedPath = relativePath.replace(/\\/g, "/");
     if (
       !root ||
-      !/^[a-f0-9]{7,64}$/i.test(hash) ||
+      !/^[a-f0-9]{7,64}(?:\^)?$/i.test(revision) ||
       normalizedPath.startsWith("/") ||
       normalizedPath === ".." ||
       normalizedPath.startsWith("../")
@@ -150,7 +174,7 @@ export class GitService {
     }
     const { stdout } = await execFileAsync(
       "git",
-      ["-C", root, "show", `${hash}:${normalizedPath}`],
+      ["-C", root, "show", `${revision}:${normalizedPath}`],
       { encoding: "utf8", maxBuffer: 20 * 1024 * 1024 }
     );
     return stdout;

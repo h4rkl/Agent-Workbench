@@ -14,6 +14,9 @@ importers:
       '@types/vscode':
         specifier: ^1.104.0
         version: 1.125.0
+      '@vscode/codicons':
+        specifier: 0.0.46-24
+        version: 0.0.46-24
       '@vscode/vsce':
         specifier: ^3.6.0
         version: 3.9.2
@@ -677,6 +680,9 @@ packages:
 
   '@vitest/utils@3.2.7':
     resolution: {integrity: sha512-x6BDOd7dyo3PFLY3I9/HJ25X/6OurhGXk2/B9gOZNPF7XDVjeBK4k01lQE5uvDpbuheErh91qYuE1E2OEjK3Rw==}
+
+  '@vscode/codicons@0.0.46-24':
+    resolution: {integrity: sha512-KIDWUYxG6eh+DHRg+3G4bS487T+g1ZkLfB4HylOBbCcHsvLdfLMRM/m92DS1Ljhi8nglLr9ucwwWhHTEAC+DpA==}
 
   '@vscode/vsce-sign-alpine-arm64@2.0.6':
     resolution: {integrity: sha512-wKkJBsvKF+f0GfsUuGT0tSW0kZL87QggEiqNqK6/8hvqsXvpx8OsTEc3mnE1kejkh5r+qUyQ7PtF8jZYN0mo8Q==}
@@ -2325,6 +2331,8 @@ snapshots:
       '@vitest/pretty-format': 3.2.7
       loupe: 3.2.1
       tinyrainbow: 2.0.0
+
+  '@vscode/codicons@0.0.46-24': {}
 
   '@vscode/vsce-sign-alpine-arm64@2.0.6':
     optional: true

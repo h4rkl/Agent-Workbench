@@ -74,35 +74,69 @@
   }
 
   function icon(name, label) {
-    const paths = {
-      agent: '<path d="M8 3h8v2h2.5A2.5 2.5 0 0121 7.5v8a2.5 2.5 0 01-2.5 2.5H16v2h-2v-2h-4v2H8v-2H5.5A2.5 2.5 0 013 15.5v-8A2.5 2.5 0 015.5 5H8V3zm-2.5 4a.5.5 0 00-.5.5v8a.5.5 0 00.5.5h13a.5.5 0 00.5-.5v-8a.5.5 0 00-.5-.5h-13zM8 10a1.5 1.5 0 110 3 1.5 1.5 0 010-3zm8 0a1.5 1.5 0 110 3 1.5 1.5 0 010-3z"/>',
-      add: '<path d="M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z"/>',
-      search: '<path d="M10.5 4a6.5 6.5 0 104.02 11.61L19.91 21 21 19.91l-5.39-5.39A6.5 6.5 0 0010.5 4zm0 1.5a5 5 0 110 10 5 5 0 010-10z"/>',
-      tune: '<path d="M4 7h9a3 3 0 100-2H4v2zm0 6h3a3 3 0 100-2H4v2zm0 6h11a3 3 0 100-2H4v2zm9-13a1 1 0 110 2 1 1 0 010-2zm-6 6a1 1 0 110 2 1 1 0 010-2zm8 6a1 1 0 110 2 1 1 0 010-2z" transform="translate(0 -1)"/>',
-      chat: '<path d="M4 4h12a3 3 0 013 3v6a3 3 0 01-3 3H9l-5 4v-4a3 3 0 01-2-2.8V7a3 3 0 013-3zm0 2a1 1 0 00-1 1v6a1 1 0 001 1h2v2l2.4-2H16a1 1 0 001-1V7a1 1 0 00-1-1H4z"/>',
-      branch: '<path d="M6 3a3 3 0 012.8 4H15a3 3 0 110 2H8.8A3 3 0 017 10.8v2.4A3 3 0 119 16a3 3 0 01-2 2.8A3 3 0 015 16a3 3 0 012-2.8v-2.4A3 3 0 016 5a1 1 0 100 2 1 1 0 000-2z"/>',
-      history: '<path d="M12 3a9 9 0 109 9h-2a7 7 0 11-2.05-4.95L14 10h7V3l-2.62 2.62A8.96 8.96 0 0012 3zm-1 4h2v5.4l3.5 2.1-1 1.7-4.5-2.7V7z"/>',
-      changes: '<path d="M7 3h10v3h3v15H4V6h3V3zm2 2v3h6V5H9zM6 8v11h12V8h-1v2H7V8H6zm3 5h6v2H9v-2z"/>',
-      folder: '<path d="M3 5h7l2 2h9v12H3V5zm2 2v10h14V9h-7.8l-2-2H5z"/>',
-      file: '<path d="M6 2h8l5 5v15H6V2zm2 2v16h9V8h-4V4H8zm7 .8V6h1.2L15 4.8z"/>',
-      chevron: '<path d="M8.6 5.6L15 12l-6.4 6.4-1.4-1.4 5-5-5-5 1.4-1.4z"/>',
-      settings: '<path d="M10.9 2h2.2l.5 2.2c.5.2 1 .4 1.4.8l2.1-.7 1.1 1.9-1.7 1.5c.1.3.2.9.2 1.3s-.1 1-.2 1.3l1.7 1.5-1.1 1.9-2.1-.7c-.4.4-.9.6-1.4.8l-.5 2.2h-2.2l-.5-2.2c-.5-.2-1-.4-1.4-.8l-2.1.7-1.1-1.9 1.7-1.5c-.1-.3-.2-.9-.2-1.3s.1-1 .2-1.3L5.8 6.2l1.1-1.9L9 5c.4-.4.9-.6 1.4-.8l.5-2.2zM12 7a3 3 0 100 6 3 3 0 000-6z" transform="translate(0 3)"/>',
-      output: '<path d="M4 5h16v14H4V5zm2 2v10h12V7H6zm1.2 3L9 11.8l-1.8 1.8 1.2 1.2 3-3-3-3L7.2 10zm5.8 4h4v1.5h-4V14z"/>',
-      import: '<path d="M11 3h2v10.2l3.6-3.6L18 11l-6 6-6-6 1.4-1.4 3.6 3.6V3zM4 19h16v2H4v-2z"/>',
-      send: '<path d="M12 4l7 7-1.4 1.4-4.6-4.6V20h-2V7.8l-4.6 4.6L5 11l7-7z"/>',
-      stop: '<path d="M6 6h12v12H6z"/>',
-      refresh: '<path d="M19 7V3l-1.8 1.8A8 8 0 104 17l1.5-1.3A6 6 0 1117.4 8H13V6h6v1z"/>',
-      window: '<path d="M4 4h16v16H4V4zm2 4v10h12V8H6zm0-2h12V6H6z"/>',
-      attach: '<path d="M8.5 18.5a5 5 0 010-7.1l6.4-6.4a3.5 3.5 0 115 5l-7.8 7.8a2 2 0 11-2.8-2.8l7.1-7.1 1.4 1.4-7.1 7.1 0 0a.02.02 0 000 .02.02.02 0 00.02 0l7.8-7.8a1.5 1.5 0 00-2.2-2.2L9.9 12.8a3 3 0 104.2 4.2l5.7-5.7 1.4 1.4-5.7 5.8a5 5 0 01-7 0z"/>',
-      more: '<path d="M5 10a2 2 0 110 4 2 2 0 010-4zm7 0a2 2 0 110 4 2 2 0 010-4zm7 0a2 2 0 110 4 2 2 0 010-4z"/>',
-      close: '<path d="M6.3 4.9L12 10.6l5.7-5.7 1.4 1.4-5.7 5.7 5.7 5.7-1.4 1.4-5.7-5.7-5.7 5.7-1.4-1.4 5.7-5.7-5.7-5.7 1.4-1.4z"/>',
-      copy: '<path d="M8 3h11v14h-3v4H5V7h3V3zm2 4h6v8h1V5h-7v2zm-3 2v10h7V9H7z"/>',
-      archive: '<path d="M4 3h16l2 4v2h-1v11H3V9H2V7l2-4zm1.3 2l-1 2h15.4l-1-2H5.3zM5 9v9h14V9H5zm4 2h6v2H9v-2z"/>',
-      trash: '<path d="M8 3h8l1 2h4v2H3V5h4l1-2zm-2 6h12l-1 12H7L6 9zm3 2v8h2v-8H9zm4 0v8h2v-8h-2z"/>',
-      commit: '<path d="M11 2h2v6.2a4 4 0 010 7.6V22h-2v-6.2a4 4 0 010-7.6V2zm1 8a2 2 0 100 4 2 2 0 000-4z"/>',
-      check: '<path d="M9.2 18.2L3 12l1.4-1.4 4.8 4.8L19.6 5 21 6.4 9.2 18.2z"/>'
+    const names = {
+      agent: "robot",
+      add: "add",
+      search: "search",
+      tune: "filter",
+      chat: "comment-discussion",
+      branch: "git-branch",
+      history: "history",
+      changes: "source-control",
+      folder: "folder",
+      file: "file",
+      chevron: "chevron-right",
+      settings: "settings-gear",
+      output: "output",
+      import: "cloud-download",
+      send: "arrow-up",
+      stop: "debug-stop",
+      refresh: "refresh",
+      window: "multiple-windows",
+      attach: "attach",
+      more: "ellipsis",
+      close: "close",
+      copy: "copy",
+      archive: "archive",
+      trash: "trash",
+      commit: "git-commit",
+      check: "check"
     };
-    return '<svg class="icon" viewBox="0 0 24 24" aria-hidden="true">' + (paths[name] || paths.file) + '</svg><span class="sr-only">' + escapeHtml(label || name) + '</span>';
+    return codicon(names[name] || "file", label || name, "icon");
+  }
+
+  function codicon(name, label, className) {
+    return '<span class="codicon codicon-' + attr(name) + (className ? " " + attr(className) : "") + '" aria-hidden="true"></span>' + (label ? '<span class="sr-only">' + escapeHtml(label) + "</span>" : "");
+  }
+
+  function fileIcon(path, type, expanded) {
+    if (type === "directory") {
+      return codicon(expanded ? "folder-opened" : "folder", "Folder", "icon file-icon");
+    }
+    const extension = String(path || "").toLowerCase().split(".").pop();
+    let name = "file";
+    if (extension === "json" || extension === "jsonc") name = "json";
+    else if (extension === "md" || extension === "mdx") name = "markdown";
+    else if (["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "mp3", "wav", "mp4", "mov"].includes(extension)) name = "file-media";
+    else if (["zip", "gz", "tgz", "tar", "7z", "rar"].includes(extension)) name = "file-zip";
+    else if (["pdf", "woff", "woff2", "ttf", "otf", "bin", "wasm"].includes(extension)) name = "file-binary";
+    else if (["ts", "tsx", "js", "jsx", "mjs", "cjs", "css", "scss", "less", "html", "vue", "svelte", "py", "rb", "go", "rs", "java", "kt", "c", "cc", "cpp", "h", "hpp", "sh", "zsh", "fish", "yml", "yaml", "toml", "xml", "sql"].includes(extension)) name = "file-code";
+    return codicon(name, "File", "icon file-icon");
+  }
+
+  function changePresentation(change) {
+    const status = String(change.status || "M").toUpperCase();
+    if (change.untracked || status.includes("?")) return { kind: "untracked", icon: "diff-added", label: "Untracked" };
+    if (status.includes("U")) return { kind: "conflict", icon: "warning", label: "Merge conflict" };
+    if (status.includes("D")) return { kind: "deleted", icon: "diff-removed", label: "Deleted" };
+    if (status.includes("R") || status.includes("C")) return { kind: "renamed", icon: "diff-renamed", label: status.includes("R") ? "Renamed" : "Copied" };
+    if (status.includes("A")) return { kind: "added", icon: "diff-added", label: "Added" };
+    return { kind: "modified", icon: "diff-modified", label: "Modified" };
+  }
+
+  function changeIcon(change) {
+    const presentation = changePresentation(change);
+    return '<span class="change-icon ' + presentation.kind + '" title="' + attr(presentation.label) + '">' + codicon(presentation.icon, presentation.label) + "</span>";
   }
 
   function providerName(provider) {
@@ -110,7 +144,7 @@
   }
 
   function providerLogo(provider) {
-    return '<span class="provider-logo ' + attr(provider) + '" aria-hidden="true">' + (provider === "codex" ? "◎" : "A") + "</span>";
+    return '<span class="provider-logo ' + attr(provider) + '" aria-hidden="true"><span class="codicon codicon-' + (provider === "codex" ? "sparkle-filled" : "hubot") + '"></span></span>';
   }
 
   function permissionName(permission) {
@@ -228,7 +262,7 @@
     const canCommit = permission === "workspace-write" || permission === "full-access";
     const health = state.snapshot.health[provider];
     return '<main class="center-pane new-session-view"><div class="corner-agent">' + icon("agent") + '</div><section class="new-session-card"><div class="new-session-title">New agent in <label class="inline-select folder-select">' + icon("folder") + '<select id="new-workspace">' + workspaceOptions(workspace) + '</select>' + icon("chevron") + '</label> with <label class="inline-select provider-select">' + providerLogo(provider) + '<select id="new-provider"><option value="codex" ' + selected(provider, "codex") + '>Codex</option><option value="claude" ' + selected(provider, "claude") + '>Claude</option></select>' + icon("chevron") + "</label></div>" +
-      '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Select code in an editor, then use <span>＋</span> to attach it as precise feedback context.</div><div class="new-composer">' + contextChip() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span>◎</span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!state.newDraft.trim() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
+      '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Select code in an editor, then use <span class="tip-icon"><span class="codicon codicon-add" aria-hidden="true"></span></span> to attach it as precise feedback context.</div><div class="new-composer">' + contextChip() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span class="codicon codicon-sparkle" aria-hidden="true"></span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!state.newDraft.trim() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
       '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Full access</option></select></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label><label class="worktree-toggle"><input id="new-worktree" type="checkbox" ' + (state.newWorktree ? "checked" : "") + '><span>' + icon("check") + '</span> New Worktree</label><span class="meta-control branch-name">' + icon("branch") + escapeHtml(state.snapshot.branch || currentWorktree?.branch || "main") + "</span></div></div>" +
       '<p class="new-session-note">' + (state.newWorktree ? "A new branch and sibling worktree will be created before the agent starts." : "The agent will work directly in the selected worktree.") + "</p></section></main>";
   }
@@ -239,7 +273,7 @@
     if (message.role === "tool" || message.role === "reasoning") {
       return '<details class="message-card compact-card" ' + (message.state === "running" ? "open" : "") + '><summary><span class="tool-state ' + attr(message.state || "completed") + '"></span><span>' + escapeHtml(roleName) + '</span><span class="summary-spacer"></span><span class="message-time">' + timeAgo(message.createdAt) + "</span></summary>" + body + "</details>";
     }
-    return '<article class="message-card ' + attr(message.role) + '"><header><span class="message-author">' + (message.role === "assistant" ? providerLogo(session.provider) : '<span class="role-icon">' + (message.role === "user" ? "Y" : "!") + "</span>") + '<strong>' + escapeHtml(roleName) + '</strong></span><span class="message-time">' + timeAgo(message.createdAt) + "</span></header>" + body + "</article>";
+    return '<article class="message-card ' + attr(message.role) + '"><header><span class="message-author">' + (message.role === "assistant" ? providerLogo(session.provider) : '<span class="role-icon"><span class="codicon codicon-' + (message.role === "user" ? "account" : "error") + '" aria-hidden="true"></span></span>') + '<strong>' + escapeHtml(roleName) + '</strong></span><span class="message-time">' + timeAgo(message.createdAt) + "</span></header>" + body + "</article>";
   }
 
   function conversationView() {
@@ -269,7 +303,7 @@
       ? agents.map((session) => `<button class="dashboard-agent" data-action="selectSession" data-session-id="${attr(session.id)}">${providerLogo(session.provider)}<span><strong>${escapeHtml(session.title)}</strong><small>${session.status === "running" ? escapeHtml(session.statusText || "Working") : "Updated " + timeAgo(session.updatedAt)}</small></span><span class="agent-state ${attr(session.status)}">${session.status === "running" ? "Running" : session.status === "error" ? "Needs attention" : "Ready"}</span></button>`).join("")
       : '<div class="card-empty">No agent has worked in this tree yet.<button data-action="openNew" data-worktree="false">Start one here</button></div>';
     const changesMarkup = state.snapshot.changes.length
-      ? state.snapshot.changes.slice(0, 8).map((change) => `<button data-action="openDiff" data-path="${attr(change.path)}"><span class="change-status">${escapeHtml(change.status)}</span><span>${escapeHtml(change.path)}</span></button>`).join("")
+      ? state.snapshot.changes.slice(0, 8).map((change) => `<button data-action="openDiff" data-path="${attr(change.path)}">${fileIcon(change.path)}<span class="change-path">${escapeHtml(change.path)}</span>${changeIcon(change)}</button>`).join("")
       : `<div class="clean-state">${icon("check")} No uncommitted changes</div>`;
     const historyMarkup = recent.length ? recent.map(commitRow).join("") : '<div class="card-empty">No commits found.</div>';
     return `<main class="center-pane worktree-view">
@@ -329,13 +363,13 @@
       const childMarkup = isDirectory && expanded ? fileRows(children, depth + 1) : "";
       const matches = !needle || entry.path.toLowerCase().includes(needle);
       if (needle && !matches && !childMarkup) return "";
-      return '<div class="file-node"><button class="file-row ' + (isDirectory ? "directory" : "") + '" style="--depth:' + depth + '" data-action="' + (isDirectory ? "toggleDirectory" : "openFile") + '" data-path="' + attr(entry.path) + '" title="' + attr(entry.path) + '"><span class="tree-chevron">' + (isDirectory ? icon("chevron") : "") + '</span>' + icon(isDirectory ? "folder" : "file") + '<span>' + escapeHtml(entry.name) + "</span></button>" + childMarkup + "</div>";
+      return '<div class="file-node"><button class="file-row ' + (isDirectory ? "directory" : "") + '" style="--depth:' + depth + '" data-action="' + (isDirectory ? "toggleDirectory" : "openFile") + '" data-path="' + attr(entry.path) + '" title="' + attr(entry.path) + '"><span class="tree-chevron">' + (isDirectory ? icon("chevron") : "") + '</span>' + fileIcon(entry.path, entry.type, expanded) + '<span class="file-name">' + escapeHtml(entry.name) + "</span></button>" + childMarkup + "</div>";
     }).join("");
   }
 
   function changesPanel() {
     const changes = state.snapshot.changes || [];
-    return '<div class="right-content changes-content">' + (changes.length ? changes.map((change) => '<div class="change-row"><button data-action="openDiff" data-path="' + attr(change.path) + '"><span class="change-status ' + (change.untracked ? "untracked" : change.staged ? "staged" : "") + '">' + escapeHtml(change.status) + '</span><span>' + escapeHtml(change.path) + '</span></button><button class="icon-button" data-action="openFile" data-path="' + attr(change.path) + '">' + icon("file") + "</button></div>").join("") : '<div class="right-empty">' + icon("check") + '<strong>Worktree clean</strong><span>No uncommitted files detected</span></div>') + "</div>";
+    return '<div class="right-content changes-content">' + (changes.length ? changes.map((change) => '<div class="change-row"><button data-action="openDiff" data-path="' + attr(change.path) + '">' + fileIcon(change.path) + '<span class="change-path">' + escapeHtml(change.path) + '</span>' + changeIcon(change) + '</button><button class="icon-button" data-action="openFile" data-path="' + attr(change.path) + '" title="Open file">' + codicon("go-to-file", "Open file", "icon") + "</button></div>").join("") : '<div class="right-empty">' + icon("check") + '<strong>Worktree clean</strong><span>No uncommitted files detected</span></div>') + "</div>";
   }
 
   function filesPanel() {
@@ -347,7 +381,7 @@
     const commit = state.snapshot.commits.find((item) => item.hash === state.selectedCommit);
     const files = state.commitFiles.get(state.selectedCommit) || [];
     if (!commit) return '<div class="right-empty">Select a commit from history.</div>';
-    return '<div class="right-content commit-content"><div class="commit-summary"><code>' + escapeHtml(commit.hash.slice(0, 10)) + '</code><h3>' + escapeHtml(commit.subject) + '</h3><p>' + escapeHtml(commit.author) + " · " + new Date(commit.date).toLocaleString() + "</p>" + commit.refs.map((ref) => '<span class="ref-label">' + escapeHtml(ref) + "</span>").join("") + '</div><div class="commit-files"><div class="section-label">Changed files <span>' + files.length + "</span></div>" + (files.length ? files.map((file) => '<button data-action="openCommitFile" data-hash="' + attr(commit.hash) + '" data-path="' + attr(file.path) + '">' + icon("file") + '<span>' + escapeHtml(file.path) + '</span><small><b>+' + file.additions + "</b> <i>-" + file.deletions + "</i></small></button>").join("") : '<div class="sidebar-empty">Loading commit files…</div>') + "</div></div>";
+    return '<div class="right-content commit-content"><div class="commit-summary"><code>' + escapeHtml(commit.hash.slice(0, 10)) + '</code><h3>' + escapeHtml(commit.subject) + '</h3><p>' + escapeHtml(commit.author) + " · " + new Date(commit.date).toLocaleString() + "</p>" + commit.refs.map((ref) => '<span class="ref-label">' + escapeHtml(ref) + "</span>").join("") + '</div><div class="commit-files"><div class="section-label">Changed files <span>' + files.length + "</span></div>" + (files.length ? files.map((file) => '<div class="commit-file-row"><button data-action="openCommitFile" data-hash="' + attr(commit.hash) + '" data-path="' + attr(file.path) + '" data-status="' + attr(file.status) + '" title="Open commit diff">' + fileIcon(file.path) + '<span class="change-path">' + escapeHtml(file.path) + '</span><small><b>+' + file.additions + "</b> <i>-" + file.deletions + "</i></small>" + changeIcon(file) + '</button>' + (!String(file.status || "").includes("D") ? '<button class="icon-button" data-action="openFile" data-path="' + attr(file.path) + '" title="Open file in selected worktree">' + codicon("go-to-file", "Open working file", "icon") + "</button>" : "") + "</div>").join("") : '<div class="sidebar-empty">Loading commit files…</div>') + "</div></div>";
   }
 
   function rightPane() {
@@ -520,7 +554,7 @@
         else if (action === "toggleDirectory") toggleDirectory(button.dataset.path);
         else if (action === "toggleRoot") { state.expandedDirectories.has("") ? state.expandedDirectories.delete("") : state.expandedDirectories.add(""); render(); }
         else if (action === "openFile") post("openFile", { path: button.dataset.path });
-        else if (action === "openCommitFile") post("openCommitFile", { hash: button.dataset.hash, path: button.dataset.path });
+        else if (action === "openCommitFile") post("openCommitFile", { hash: button.dataset.hash, path: button.dataset.path, status: button.dataset.status });
         else if (action === "openDiff") post("openDiff", { path: button.dataset.path });
         else if (action === "refreshRepository") post("refreshRepository");
         else if (action === "openWorktree") post("openWorktree", { path: button.dataset.path || state.snapshot.selectedWorktreePath, newWindow: true });

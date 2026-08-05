@@ -34,6 +34,7 @@ import { getWebviewHtml } from "./webviewHtml";
 
 const execFileAsync = promisify(execFile);
 const PANEL_TYPE = "localAgentWorkbench.panel";
+const GIT_REVISION_SCHEME = "local-agent-git";
 
 type WebviewMessage = Record<string, unknown> & { type: string };
 
@@ -94,6 +95,24 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
+class GitRevisionDocumentProvider implements vscode.TextDocumentContentProvider {
+  public constructor(private readonly git: GitService) {}
+
+  public provideTextDocumentContent(uri: vscode.Uri): vscode.ProviderResult<string> {
+    const parameters = new URLSearchParams(uri.query);
+    if (parameters.get("empty") === "true") {
+      return "";
+    }
+    const workspace = parameters.get("workspace");
+    const revision = parameters.get("revision");
+    const relativePath = parameters.get("path");
+    if (!workspace || !revision || !relativePath) {
+      throw new Error("Invalid Git revision document reference.");
+    }
+    return this.git.fileAtRevision(workspace, revision, relativePath);
+  }
+}
+
 export class WorkbenchController implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private readonly output = vscode.window.createOutputChannel(
@@ -135,6 +154,12 @@ export class WorkbenchController implements vscode.Disposable {
 
   public constructor(private readonly context: vscode.ExtensionContext) {
     this.disposables.push(this.output);
+    this.disposables.push(
+      vscode.workspace.registerTextDocumentContentProvider(
+        GIT_REVISION_SCHEME,
+        new GitRevisionDocumentProvider(this.git)
+      )
+    );
     this.configureStatusBar();
     if (vscode.window.activeTextEditor) {
       this.lastEditorContext = this.editorContext(vscode.window.activeTextEditor);
@@ -876,12 +901,49 @@ export class WorkbenchController implements vscode.Disposable {
     const workspace = this.fileWorkspaceEntry();
     const hash = stringField(message, "hash");
     const relativePath = stringField(message, "path");
+    const status = stringField(message, "status")?.toUpperCase() || "M";
     if (!workspace || !hash || !relativePath) {
       return;
     }
-    const content = await this.git.fileAtCommit(workspace.path, hash, relativePath);
-    const document = await vscode.workspace.openTextDocument({ content });
-    await vscode.window.showTextDocument(document, { preview: false });
+    const before = this.gitRevisionUri(
+      workspace.path,
+      `${hash}^`,
+      relativePath,
+      status.includes("A")
+    );
+    const after = this.gitRevisionUri(
+      workspace.path,
+      hash,
+      relativePath,
+      status.includes("D")
+    );
+    await vscode.commands.executeCommand(
+      "vscode.diff",
+      before,
+      after,
+      `${path.basename(relativePath)} (${hash.slice(0, 8)})`,
+      { preview: false }
+    );
+  }
+
+  private gitRevisionUri(
+    workspace: string,
+    revision: string,
+    relativePath: string,
+    empty: boolean
+  ): vscode.Uri {
+    const query = new URLSearchParams({
+      workspace,
+      revision,
+      path: relativePath,
+      empty: String(empty)
+    });
+    return vscode.Uri.from({
+      scheme: GIT_REVISION_SCHEME,
+      authority: "revision",
+      path: `/${relativePath.replace(/\\/g, "/")}`,
+      query: query.toString()
+    });
   }
 
   private async openWorktree(message: WebviewMessage): Promise<void> {

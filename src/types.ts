@@ -93,6 +93,7 @@ export interface GitCommitFile {
   path: string;
   additions: number;
   deletions: number;
+  status: string;
 }
 
 export interface NativeSessionSummary {

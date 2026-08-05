@@ -65,7 +65,21 @@ describe("GitService worktree orchestration", () => {
     ]);
     expect(content).toBe("initial\n");
     expect(files).toEqual([
-      expect.objectContaining({ path: "README.md", additions: 1, deletions: 0 })
+      expect.objectContaining({ path: "README.md", additions: 1, deletions: 0, status: "A" })
     ]);
+
+    await execFileAsync("git", ["-C", repository, "add", "README.md"]);
+    await execFileAsync("git", ["-C", repository, "commit", "-m", "update readme"]);
+    const updatedHistory = await service.listHistory(repository);
+    const updatedHash = updatedHistory[0]!.hash;
+
+    await expect(service.fileAtRevision(repository, `${updatedHash}^`, "README.md"))
+      .resolves.toBe("initial\n");
+    await expect(service.fileAtCommit(repository, updatedHash, "README.md"))
+      .resolves.toBe("changed\n");
+    await expect(service.commitFiles(repository, updatedHash))
+      .resolves.toEqual([
+        expect.objectContaining({ path: "README.md", status: "M" })
+      ]);
   });
 });

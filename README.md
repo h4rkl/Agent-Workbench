@@ -13,7 +13,7 @@ through a VS Code chat provider.
 - A worktree-first three-pane editor for launching parallel agents on isolated
   Git branches
 - Worktree status, running-agent activity, repository-wide commit history, and
-  commit file inspection in one view
+  commit file inspection in one view, with native-style Codicon diff markers
 - Resizable side panes, compact/comfortable density, and a configurable accent
   color
 - Direct adapters for `claude` stream JSON and `codex exec --json`
@@ -107,7 +107,8 @@ Development Host after changing the workbench JavaScript or CSS.
    dirty-file count, and running agents. Use **New agent here** when follow-up
    work should continue on an existing worktree.
 4. Open **Repository history** to inspect commits across all branches. Select a
-   commit to see its changed files and open the committed content.
+   commit to see its changed files, open native before/after diffs, or jump to
+   the corresponding file in the selected worktree.
 5. Select a worktree and use **Open in VS Code** to work in it directly. Select
    lines in an editor and use the composer’s **+** button to attach those exact
    lines to targeted agent feedback.

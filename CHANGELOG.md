@@ -6,6 +6,8 @@
 - Agents-style editor centered on parallel Git worktrees
 - Worktree discovery and creation with per-tree agent activity and dirty state
 - Repository-wide history graph and commit file inspection
+- Native before/after diff editors for files selected from commit history
+- Native VS Code Codicons for actions, file types, and Git diff statuses
 - Lazy file browsing, worktree opening, and editor-selection prompt context
 - Direct Claude Code and Codex CLI streaming adapters
 - Persistent and resumable workbench sessions
