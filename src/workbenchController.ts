@@ -35,6 +35,10 @@ import { getWebviewHtml } from "./webviewHtml";
 const execFileAsync = promisify(execFile);
 const PANEL_TYPE = "localAgentWorkbench.panel";
 const GIT_REVISION_SCHEME = "local-agent-git";
+const SIDEBAR_COMMANDS = [
+  "workbench.action.closeSidebar",
+  "workbench.action.closeAuxiliaryBar"
+] as const;
 
 type WebviewMessage = Record<string, unknown> & { type: string };
 
@@ -218,7 +222,9 @@ export class WorkbenchController implements vscode.Disposable {
   }
 
   public async open(preserveFocus = false): Promise<void> {
+    const layout = this.hideOtherViews();
     await this.initialize();
+    await layout;
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active, preserveFocus);
       await this.postSnapshot();
@@ -234,7 +240,7 @@ export class WorkbenchController implements vscode.Disposable {
         localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, "media")]
       }
     );
-    this.attachPanel(panel);
+    this.attachPanel(panel, true);
   }
 
   public async toggle(): Promise<void> {
@@ -262,7 +268,10 @@ export class WorkbenchController implements vscode.Disposable {
     await this.panel?.webview.postMessage({ type: "showNewSession" });
   }
 
-  public attachPanel(panel: vscode.WebviewPanel): void {
+  public attachPanel(panel: vscode.WebviewPanel, layoutIsPrepared = false): void {
+    if (!layoutIsPrepared) {
+      void this.hideOtherViews();
+    }
     this.panel?.dispose();
     this.panel = panel;
     panel.iconPath = vscode.Uri.joinPath(this.context.extensionUri, "media", "icon.svg");
@@ -276,6 +285,30 @@ export class WorkbenchController implements vscode.Disposable {
       void this.handleMessage(raw);
     });
     void this.initialize().then(() => this.postSnapshot());
+  }
+
+  private async hideOtherViews(): Promise<void> {
+    for (const command of SIDEBAR_COMMANDS) {
+      try {
+        await vscode.commands.executeCommand(command);
+      } catch (error) {
+        this.output.appendLine(`[layout] ${command}: ${errorMessage(error)}`);
+      }
+    }
+
+    // A panel can contain Output, Problems, Debug Console, or a terminal. Leave
+    // it untouched when a terminal session exists so opening the workbench does
+    // not hide the user's active terminal.
+    if (vscode.window.terminals.length > 0) {
+      return;
+    }
+    try {
+      await vscode.commands.executeCommand("workbench.action.closePanel");
+    } catch (error) {
+      this.output.appendLine(
+        `[layout] workbench.action.closePanel: ${errorMessage(error)}`
+      );
+    }
   }
 
   public async checkHealth(showNotification = false): Promise<void> {

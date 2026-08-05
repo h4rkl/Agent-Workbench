@@ -28,6 +28,8 @@ through a VS Code chat provider.
 - Local session metadata persisted with mode `0600`
 - A status-bar toggle, editor-title toggle, command-palette commands, and
   `Cmd+Alt+A` / `Ctrl+Alt+A`
+- A focused launch layout that hides VS Code's sidebars and non-terminal panel
+  while preserving an existing terminal
 - A detach action that moves the workbench editor into its own VS Code window
 
 ## Requirements

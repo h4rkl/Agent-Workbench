@@ -15,3 +15,4 @@
 - Native Claude/Codex history discovery and import
 - Permission modes, Git changes, process cancellation, and CLI diagnostics
 - Status-bar, editor-title, keyboard, Command Palette, and detached-window entry points
+- Focused workbench launch that hides sidebars without disturbing an existing terminal
