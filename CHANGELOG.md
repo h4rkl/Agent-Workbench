@@ -5,6 +5,7 @@
 - Initial Local Agent Workbench release
 - Agents-style editor centered on parallel Git worktrees
 - Worktree discovery and creation with per-tree agent activity and dirty state
+- Base-branch selection and custom naming for new agent worktrees
 - Repository-wide history graph and commit file inspection
 - Native before/after diff editors for files selected from commit history
 - Native VS Code Codicons for actions, file types, and Git diff statuses

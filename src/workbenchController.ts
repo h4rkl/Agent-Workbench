@@ -128,6 +128,7 @@ export class WorkbenchController implements vscode.Disposable {
   private changes: WorkspaceChange[] = [];
   private files: WorkspaceFileEntry[] = [];
   private branch = "";
+  private branches: string[] = [];
   private repositoryRoot: string | undefined;
   private worktrees: WorktreeInfo[] = [];
   private commits: GitCommit[] = [];
@@ -468,7 +469,11 @@ export class WorkbenchController implements vscode.Disposable {
     if (message.newWorktree === true) {
       const worktree = await this.git.createWorktree(
         workspace,
-        prompt || requestedTitle || `${provider} session`
+        prompt || requestedTitle || `${provider} session`,
+        {
+          baseBranch: stringField(message, "baseBranch"),
+          branchName: stringField(message, "branchName")
+        }
       );
       workspace = worktree.workspace;
     }
@@ -853,17 +858,20 @@ export class WorkbenchController implements vscode.Disposable {
       this.repositoryRoot = undefined;
       this.worktrees = [];
       this.commits = [];
+      this.branches = [];
       return;
     }
     this.repositoryRoot = await this.git.repositoryRoot(seed);
     if (!this.repositoryRoot) {
       this.worktrees = [];
       this.commits = [];
+      this.branches = [];
       return;
     }
-    [this.worktrees, this.commits] = await Promise.all([
+    [this.worktrees, this.commits, this.branches] = await Promise.all([
       this.git.listWorktrees(this.repositoryRoot),
-      this.git.listHistory(this.repositoryRoot)
+      this.git.listHistory(this.repositoryRoot),
+      this.git.listBranches(this.repositoryRoot)
     ]);
     if (!this.selectedWorktreePath || !this.worktrees.some((item) => item.path === this.selectedWorktreePath)) {
       this.selectedWorktreePath = this.worktrees.find((item) => item.path === seed)?.path
@@ -1183,6 +1191,7 @@ export class WorkbenchController implements vscode.Disposable {
       files: this.files,
       fileWorkspace: this.fileWorkspaceEntry(),
       branch: this.branch,
+      branches: this.branches,
       repositoryRoot: this.repositoryRoot,
       worktrees: this.worktrees,
       commits: this.commits,

@@ -47,6 +47,7 @@ describe("workbench webview", () => {
           files: [{ name: "src", path: "src", type: "directory" }],
           fileWorkspace: { path: "/repo", name: "repo", active: true },
           branch: "main",
+          branches: ["main"],
           repositoryRoot: "/repo",
           worktrees: [{
             path: "/repo",
@@ -84,6 +85,9 @@ describe("workbench webview", () => {
     expect(app.innerHTML).toContain("New parallel task");
     expect(app.innerHTML).toContain("New agent in");
     expect(app.innerHTML).toContain("New Worktree");
+    expect(app.innerHTML).toContain("New branch");
+    expect(app.innerHTML).toContain('id="new-base-branch"');
+    expect(app.innerHTML).toContain('id="new-branch-name"');
     expect(app.innerHTML).toContain("Repository history");
     expect(app.innerHTML).toContain("repo");
     expect(app.innerHTML).toContain("codicon-folder");

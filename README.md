@@ -100,7 +100,8 @@ Development Host after changing the workbench JavaScript or CSS.
 1. Click **Local Agents** in the status bar, use the sparkle button in the
    editor title, or run **Local Agents: Toggle Workbench**.
 2. Choose **New parallel task**, select Claude or Codex, and describe the work.
-   Keep **New Worktree** enabled to create an `agent/<task>-<timestamp>` branch
+   Keep **New Worktree** enabled, choose its base branch, and optionally provide
+   a custom branch name. Blank names become `agent/<task>-<timestamp>` branches
    in a sibling `<repository>-worktrees` directory before the agent starts.
    **Commit result** asks the agent to verify and commit its intended changes.
 3. Launch additional agents the same way. The left pane shows every worktree,

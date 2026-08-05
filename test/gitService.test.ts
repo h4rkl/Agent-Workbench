@@ -51,6 +51,38 @@ describe("GitService worktree orchestration", () => {
     expect(history[0]).toMatchObject({ subject: "initial commit", author: "Agent Test" });
   });
 
+  it("creates a custom branch from the selected base branch", async () => {
+    const service = new GitService();
+    await execFileAsync("git", ["-C", repository, "branch", "stable"]);
+    const { stdout: stableHead } = await execFileAsync(
+      "git",
+      ["-C", repository, "rev-parse", "stable"],
+      { encoding: "utf8" }
+    );
+    await writeFile(join(repository, "README.md"), "main moved\n", "utf8");
+    await execFileAsync("git", ["-C", repository, "add", "README.md"]);
+    await execFileAsync("git", ["-C", repository, "commit", "-m", "advance main"]);
+
+    const created = await service.createWorktree(repository, "Custom task", {
+      baseBranch: "stable",
+      branchName: "codex/fix-breakpoint-default-locale"
+    });
+    const branches = await service.listBranches(repository);
+    const { stdout: worktreeHead } = await execFileAsync(
+      "git",
+      ["-C", created.workspace, "rev-parse", "HEAD"],
+      { encoding: "utf8" }
+    );
+
+    expect(created.branch).toBe("codex/fix-breakpoint-default-locale");
+    expect(branches).toContain(created.branch);
+    expect(worktreeHead.trim()).toBe(stableHead.trim());
+    await expect(service.createWorktree(repository, "Duplicate", {
+      baseBranch: "main",
+      branchName: created.branch
+    })).rejects.toThrow(`Branch already exists: ${created.branch}`);
+  });
+
   it("reports changes and reads files from a commit", async () => {
     const service = new GitService();
     await writeFile(join(repository, "README.md"), "changed\n", "utf8");

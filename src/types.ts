@@ -126,6 +126,7 @@ export interface WorkbenchSnapshot {
   files: WorkspaceFileEntry[];
   fileWorkspace?: WorkspaceEntry;
   branch: string;
+  branches: string[];
   repositoryRoot?: string;
   worktrees: WorktreeInfo[];
   commits: GitCommit[];

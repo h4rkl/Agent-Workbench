@@ -193,9 +193,23 @@ export class GitService {
     }
   }
 
+  public async listBranches(workspace: string): Promise<string[]> {
+    const root = await this.repositoryRoot(workspace);
+    if (!root) {
+      return [];
+    }
+    const { stdout } = await execFileAsync(
+      "git",
+      ["-C", root, "for-each-ref", "--format=%(refname:short)", "--sort=refname", "refs/heads"],
+      { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
+    );
+    return stdout.split("\n").map((branch) => branch.trim()).filter(Boolean);
+  }
+
   public async createWorktree(
     workspace: string,
-    title: string
+    title: string,
+    options: { baseBranch?: string; branchName?: string } = {}
   ): Promise<{ workspace: string; branch: string }> {
     const { stdout: repositoryOutput } = await execFileAsync(
       "git",
@@ -214,8 +228,35 @@ export class GitService {
       .replace(/^-+|-+$/g, "")
       .slice(0, 36) || "session";
     const suffix = new Date().toISOString().replace(/\D/g, "").slice(0, 17);
-    const directoryName = `${slug}-${suffix}`;
-    const branch = `agent/${directoryName}`;
+    const generatedName = `${slug}-${suffix}`;
+    const branch = options.branchName?.trim() || `agent/${generatedName}`;
+    if (branch.startsWith("refs/") || branch === "HEAD") {
+      throw new Error("Enter a short Git branch name, such as codex/fix-locale.");
+    }
+    try {
+      await execFileAsync("git", ["check-ref-format", "--branch", branch], {
+        encoding: "utf8"
+      });
+    } catch {
+      throw new Error(`Invalid Git branch name: ${branch}`);
+    }
+    const branches = await this.listBranches(repository);
+    if (branches.includes(branch)) {
+      throw new Error(`Branch already exists: ${branch}`);
+    }
+    const requestedBase = options.baseBranch?.trim();
+    const baseBranch = requestedBase || (branches.includes("main") ? "main" : branches[0]);
+    if (!baseBranch || !branches.includes(baseBranch)) {
+      throw new Error(`Base branch does not exist: ${baseBranch || "(none)"}`);
+    }
+    const directorySlug = branch
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 64) || generatedName;
+    const directoryName = options.branchName?.trim()
+      ? `${directorySlug}-${suffix}`
+      : generatedName;
     const worktreesDirectory = path.join(
       path.dirname(repository),
       `${path.basename(repository)}-worktrees`
@@ -224,7 +265,7 @@ export class GitService {
     await mkdir(worktreesDirectory, { recursive: true });
     await execFileAsync(
       "git",
-      ["-C", repository, "worktree", "add", "-b", branch, target, "HEAD"],
+      ["-C", repository, "worktree", "add", "-b", branch, target, baseBranch],
       { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
     );
     return { workspace: target, branch };

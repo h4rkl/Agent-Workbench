@@ -249,6 +249,17 @@ body.resizing { cursor: col-resize; user-select: none; }
 .worktree-toggle input:checked + span .icon { opacity: 1; }
 .worktree-toggle.disabled { opacity: .42; cursor: default; }
 .branch-name { color: var(--muted); }
+.branch-setup { min-height: 43px; margin: 7px 10px 0; padding: 6px 8px; display: flex; align-items: center; gap: 12px; border: 1px solid var(--subtle-line); border-radius: 6px; background: color-mix(in srgb, var(--raised-bg) 64%, transparent); color: var(--muted); font-size: 10px; }
+.branch-setup-title { display: inline-flex; align-items: center; gap: 6px; color: var(--vscode-foreground); white-space: nowrap; }
+.branch-setup-title .icon { width: 14px; color: var(--vscode-gitDecoration-addedResourceForeground, #81b88b); }
+.branch-setup > label { min-width: 0; display: inline-flex; flex: 0 1 auto; align-items: center; gap: 6px; white-space: nowrap; }
+.branch-select { min-width: 100px; height: 27px; padding: 0 4px 0 7px; display: inline-flex; align-items: center; border: 1px solid var(--hairline); border-radius: 4px; background: var(--vscode-dropdown-background, var(--raised-bg)); color: var(--vscode-dropdown-foreground, var(--vscode-foreground)); }
+.branch-select select { min-width: 70px; max-width: 180px; flex: 1; appearance: none; border: 0; outline: 0; background: transparent; color: inherit; cursor: pointer; }
+.branch-select .icon { width: 11px; transform: rotate(90deg); }
+.branch-name-input { flex: 1 1 260px !important; }
+.branch-name-input input { min-width: 120px; height: 27px; padding: 0 7px; flex: 1; border: 1px solid var(--hairline); border-radius: 4px; outline: 0; background: var(--vscode-input-background); color: var(--vscode-input-foreground, var(--vscode-foreground)); font-family: var(--vscode-editor-font-family, monospace); }
+.branch-name-input input:focus { border-color: var(--vscode-focusBorder); }
+.branch-name-input input::placeholder { color: var(--vscode-input-placeholderForeground); }
 .new-session-note { margin: 3px 10px 0; color: color-mix(in srgb, var(--muted) 78%, transparent); font-size: 10px; }
 .context-chip { max-width: 340px; height: 26px; margin: 8px 0 0; padding: 0 4px 0 7px; display: flex; align-items: center; gap: 5px; border: 1px solid var(--subtle-line); border-radius: 5px; background: var(--raised-bg); color: var(--muted); font-size: 10px; }
 .context-chip > span:not(.icon, .sr-only) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -471,4 +482,6 @@ body.resizing { cursor: col-resize; user-select: none; }
   .worktree-dashboard { grid-template-columns: 1fr; }
   .dashboard-history { grid-column: 1; }
   .header-actions .secondary-button { display: none; }
+  .new-meta, .branch-setup { align-items: flex-start; flex-direction: column; gap: 7px; }
+  .branch-name-input { width: 100%; flex-basis: auto !important; }
 }
