@@ -57,6 +57,24 @@ interface EditorContext {
   text: string;
 }
 
+interface GitApiRepository {
+  rootUri: vscode.Uri;
+  state: {
+    HEAD?: { name?: string };
+    onDidChange: vscode.Event<void>;
+  };
+}
+
+interface GitApi {
+  repositories: readonly GitApiRepository[];
+  onDidOpenRepository: vscode.Event<GitApiRepository>;
+  onDidCloseRepository: vscode.Event<GitApiRepository>;
+}
+
+interface GitExtension {
+  getAPI(version: 1): GitApi;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -152,6 +170,8 @@ export class WorkbenchController implements vscode.Disposable {
   };
   private readonly activeRuns = new Map<string, ActiveRun>();
   private readonly disposables: vscode.Disposable[] = [];
+  private readonly gitRepositoryListeners = new Map<string, vscode.Disposable>();
+  private gitRefreshTimer: ReturnType<typeof setTimeout> | undefined;
   private saveChain: Promise<void> = Promise.resolve();
   private initialized = false;
   private initialization: Promise<void> | undefined;
@@ -198,6 +218,7 @@ export class WorkbenchController implements vscode.Disposable {
         }
       })
     );
+    void this.subscribeToGitRepositories();
   }
 
   public async initialize(): Promise<void> {
@@ -223,7 +244,11 @@ export class WorkbenchController implements vscode.Disposable {
 
   public async open(preserveFocus = false): Promise<void> {
     const layout = this.hideOtherViews();
+    const wasInitialized = this.initialized;
     await this.initialize();
+    if (wasInitialized) {
+      await this.refreshWorkspaceData();
+    }
     await layout;
     if (this.panel) {
       this.panel.reveal(vscode.ViewColumn.Active, preserveFocus);
@@ -279,6 +304,11 @@ export class WorkbenchController implements vscode.Disposable {
     panel.onDidDispose(() => {
       if (this.panel === panel) {
         this.panel = undefined;
+      }
+    });
+    panel.onDidChangeViewState((event) => {
+      if (event.webviewPanel.visible) {
+        this.scheduleRepositoryRefresh();
       }
     });
     panel.webview.onDidReceiveMessage((raw) => {
@@ -379,6 +409,7 @@ export class WorkbenchController implements vscode.Disposable {
     try {
       switch (message.type) {
         case "ready":
+          await this.refreshWorkspaceData();
           await this.postSnapshot();
           break;
         case "selectSession":
@@ -905,6 +936,82 @@ export class WorkbenchController implements vscode.Disposable {
     await Promise.all([this.refreshChanges(), this.refreshFiles()]);
   }
 
+  private async subscribeToGitRepositories(): Promise<void> {
+    try {
+      const extension = vscode.extensions.getExtension<GitExtension>("vscode.git");
+      if (!extension) {
+        return;
+      }
+      const exports = extension.isActive ? extension.exports : await extension.activate();
+      const api = exports.getAPI(1);
+      for (const repository of api.repositories) {
+        this.watchGitRepository(repository);
+      }
+      this.disposables.push(
+        api.onDidOpenRepository((repository) => this.watchGitRepository(repository)),
+        api.onDidCloseRepository((repository) => this.unwatchGitRepository(repository))
+      );
+    } catch (error) {
+      this.output.appendLine(`[git-watch] ${errorMessage(error)}`);
+    }
+  }
+
+  private watchGitRepository(repository: GitApiRepository): void {
+    const key = path.resolve(repository.rootUri.fsPath);
+    if (this.gitRepositoryListeners.has(key)) {
+      return;
+    }
+    this.gitRepositoryListeners.set(
+      key,
+      repository.state.onDidChange(() => {
+        void this.refreshIfBranchChanged(repository);
+      })
+    );
+  }
+
+  private unwatchGitRepository(repository: GitApiRepository): void {
+    const key = path.resolve(repository.rootUri.fsPath);
+    this.gitRepositoryListeners.get(key)?.dispose();
+    this.gitRepositoryListeners.delete(key);
+  }
+
+  private async refreshIfBranchChanged(repository: GitApiRepository): Promise<void> {
+    try {
+      const key = path.resolve(repository.rootUri.fsPath);
+      const worktree = this.worktrees.find((item) => path.resolve(item.path) === key);
+      if (!worktree) {
+        return;
+      }
+      const reportedBranch = repository.state.HEAD?.name;
+      const currentBranch = reportedBranch ?? await this.git.currentBranch(repository.rootUri.fsPath);
+      if (!repository.state.HEAD && !currentBranch) {
+        return;
+      }
+      if ((currentBranch || "detached") !== worktree.branch) {
+        this.scheduleRepositoryRefresh();
+      }
+    } catch (error) {
+      this.output.appendLine(`[git-watch] ${errorMessage(error)}`);
+    }
+  }
+
+  private scheduleRepositoryRefresh(): void {
+    if (!this.panel) {
+      return;
+    }
+    if (this.gitRefreshTimer) {
+      clearTimeout(this.gitRefreshTimer);
+    }
+    this.gitRefreshTimer = setTimeout(() => {
+      this.gitRefreshTimer = undefined;
+      void this.refreshWorkspaceData()
+        .then(() => this.postSnapshot())
+        .catch((error) => {
+          this.output.appendLine(`[git-refresh] ${errorMessage(error)}`);
+        });
+    }, 150);
+  }
+
   private async refreshRepositoryData(): Promise<void> {
     const seed = this.repositorySeedPath();
     if (!seed) {
@@ -1376,6 +1483,13 @@ export class WorkbenchController implements vscode.Disposable {
       run.running.cancel();
     }
     this.activeRuns.clear();
+    if (this.gitRefreshTimer) {
+      clearTimeout(this.gitRefreshTimer);
+    }
+    for (const disposable of this.gitRepositoryListeners.values()) {
+      disposable.dispose();
+    }
+    this.gitRepositoryListeners.clear();
     this.panel?.dispose();
     for (const disposable of this.disposables) {
       disposable.dispose();

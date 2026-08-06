@@ -140,6 +140,16 @@ describe("workbench webview", () => {
     expect(app.innerHTML).toContain("codicon-folder");
     expect(script).toContain('icon: "diff-modified"');
 
+    handlers.get("message")?.({
+      data: {
+        type: "changes",
+        changes: [],
+        branch: "feature/live-branch"
+      }
+    });
+    expect(app.innerHTML).toContain("Creates a new worktree and branch from feature/live-branch.");
+    expect(app.innerHTML).toContain("<strong>feature/live-branch</strong>");
+
     const preventDefault = vi.fn();
     worktreeRowHandlers.get("contextmenu")?.({
       preventDefault,

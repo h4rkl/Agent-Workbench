@@ -18,6 +18,7 @@
     newWorktree: saved.newWorktree !== false,
     newBranch: typeof saved.newBranch === "boolean" ? saved.newBranch : saved.newWorktree !== false,
     newBaseBranch: saved.newBaseBranch || "",
+    newWorkspaceBranch: saved.newWorkspaceBranch || "",
     newBranchName: saved.newBranchName || "",
     autoCommit: saved.autoCommit !== false,
     sessionQuery: saved.sessionQuery || "",
@@ -56,6 +57,7 @@
       newWorktree: state.newWorktree,
       newBranch: state.newBranch,
       newBaseBranch: state.newBaseBranch,
+      newWorkspaceBranch: state.newWorkspaceBranch,
       newBranchName: state.newBranchName,
       autoCommit: state.autoCommit,
       sessionQuery: state.sessionQuery,
@@ -274,10 +276,29 @@
   function defaultBaseBranch(currentWorktree) {
     const branches = state.snapshot.branches || [];
     if (state.newBaseBranch && branches.includes(state.newBaseBranch)) return state.newBaseBranch;
-    if (branches.includes("main")) return "main";
     if (currentWorktree && branches.includes(currentWorktree.branch)) return currentWorktree.branch;
     if (branches.includes(state.snapshot.branch)) return state.snapshot.branch;
+    if (branches.includes("main")) return "main";
     return branches[0] || state.snapshot.branch || "main";
+  }
+
+  function syncSelectedBranch(nextBranch) {
+    if (!nextBranch || !state.snapshot) return;
+    const current = selectedWorktree();
+    const previousBranch = current?.branch || state.snapshot.branch || "";
+    state.snapshot.branch = nextBranch;
+    if (current) {
+      current.branch = nextBranch;
+      current.detached = nextBranch === "detached";
+    }
+    if (nextBranch !== "detached" && !state.snapshot.branches.includes(nextBranch)) {
+      state.snapshot.branches.push(nextBranch);
+      state.snapshot.branches.sort((a, b) => a.localeCompare(b));
+    }
+    if (state.newWorkspace === current?.path && (!state.newBaseBranch || state.newBaseBranch === previousBranch)) {
+      state.newBaseBranch = nextBranch === "detached" ? "" : nextBranch;
+    }
+    if (state.newWorkspace === current?.path) state.newWorkspaceBranch = nextBranch;
   }
 
   function baseBranchOptions(current) {
@@ -635,7 +656,8 @@
     if (typeof createWorktree === "boolean") {
       state.newWorktree = createWorktree;
       state.newBranch = createWorktree;
-      if (!createWorktree && current?.branch) state.newBaseBranch = current.branch;
+      state.newBaseBranch = current?.branch === "detached" ? "" : current?.branch || "";
+      state.newWorkspaceBranch = current?.branch || "";
     }
     state.newProvider = state.newProvider || state.snapshot.config.defaultProvider;
     state.newPermission = state.newPermission || state.snapshot.config.defaultPermission;
@@ -653,6 +675,7 @@
     state.newWorktree = false;
     state.newBranch = false;
     state.newBaseBranch = worktree.branch;
+    state.newWorkspaceBranch = worktree.branch;
     state.view = "new";
     persist();
     render();
@@ -839,7 +862,14 @@
     const branchTarget = document.getElementById("new-branch-target");
     const baseBranch = document.getElementById("new-base-branch");
     const branchName = document.getElementById("new-branch-name");
-    if (workspace) workspace.addEventListener("change", () => { state.newWorkspace = workspace.value; state.newBaseBranch = ""; persist(); render({ preserveFocus: true }); });
+    if (workspace) workspace.addEventListener("change", () => {
+      const worktree = state.snapshot.worktrees.find((item) => item.path === workspace.value);
+      state.newWorkspace = workspace.value;
+      state.newBaseBranch = "";
+      state.newWorkspaceBranch = worktree?.branch || "";
+      persist();
+      render({ preserveFocus: true });
+    });
     if (worktreeTarget) worktreeTarget.addEventListener("change", () => {
       if (worktreeTarget.value === "__new__") {
         state.newWorktree = true;
@@ -849,6 +879,7 @@
         state.newBranch = false;
         state.newWorkspace = worktreeTarget.value;
         state.newBaseBranch = state.snapshot.worktrees.find((item) => item.path === worktreeTarget.value)?.branch || "";
+        state.newWorkspaceBranch = state.newBaseBranch;
       }
       persist();
       render({ preserveFocus: true });
@@ -927,11 +958,19 @@
   window.addEventListener("message", (event) => {
     const message = event.data || {};
     if (message.type === "snapshot") {
-      const previousWorkspace = state.snapshot && state.snapshot.selectedWorktreePath;
+      const previousSnapshot = state.snapshot;
+      const previousWorkspace = previousSnapshot && previousSnapshot.selectedWorktreePath;
+      const previousWorktree = previousSnapshot?.worktrees.find((item) => item.path === state.newWorkspace);
       state.snapshot = message.snapshot;
       state.newProvider = state.newProvider || state.snapshot.config.defaultProvider;
       state.newPermission = state.newPermission || state.snapshot.config.defaultPermission;
       state.newWorkspace = state.newWorkspace || state.snapshot.selectedWorktreePath || state.snapshot.workspaces[0]?.path || "";
+      const nextWorktree = state.snapshot.worktrees.find((item) => item.path === state.newWorkspace);
+      const previousBranch = previousWorktree?.branch || state.newWorkspaceBranch;
+      if (nextWorktree && nextWorktree.branch !== previousBranch && (!previousBranch || !state.newBaseBranch || state.newBaseBranch === previousBranch)) {
+        state.newBaseBranch = nextWorktree.branch === "detached" ? "" : nextWorktree.branch;
+      }
+      if (nextWorktree) state.newWorkspaceBranch = nextWorktree.branch;
       if (previousWorkspace !== state.snapshot.selectedWorktreePath) {
         state.directories = new Map([["", state.snapshot.files || []]]);
         state.expandedDirectories = new Set([""]);
@@ -976,7 +1015,8 @@
       render({ preserveFocus: true });
     } else if (message.type === "changes" && state.snapshot) {
       state.snapshot.changes = message.changes || [];
-      state.snapshot.branch = message.branch || "";
+      syncSelectedBranch(message.branch || "detached");
+      persist();
       render({ preserveFocus: true });
     } else if (message.type === "files" && state.snapshot) {
       state.snapshot.files = message.files || [];
