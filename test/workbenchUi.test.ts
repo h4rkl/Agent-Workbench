@@ -47,7 +47,7 @@ describe("workbench webview", () => {
           files: [{ name: "src", path: "src", type: "directory" }],
           fileWorkspace: { path: "/repo", name: "repo", active: true },
           branch: "main",
-          branches: ["main"],
+          branches: ["main", "stable"],
           repositoryRoot: "/repo",
           worktrees: [{
             path: "/repo",
@@ -82,12 +82,17 @@ describe("workbench webview", () => {
       }
     });
 
-    expect(app.innerHTML).toContain("New parallel task");
-    expect(app.innerHTML).toContain("New agent in");
-    expect(app.innerHTML).toContain("New Worktree");
+    expect(app.innerHTML).toContain("New task");
+    expect(app.innerHTML).toContain("Codex agent");
+    expect(app.innerHTML).toContain('id="new-worktree-target"');
+    expect(app.innerHTML).toContain("New worktree");
+    expect(app.innerHTML).toContain('id="new-workspace"');
+    expect(app.innerHTML).toContain('id="new-branch-target"');
     expect(app.innerHTML).toContain("New branch");
     expect(app.innerHTML).toContain('id="new-base-branch"');
     expect(app.innerHTML).toContain('id="new-branch-name"');
+    expect(app.innerHTML).toContain("Existing · stable");
+    expect(app.innerHTML).toContain("already in a worktree");
     expect(app.innerHTML).toContain("Repository history");
     expect(app.innerHTML).toContain("repo");
     expect(app.innerHTML).toContain("codicon-folder");

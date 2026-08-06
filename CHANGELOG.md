@@ -16,3 +16,4 @@
 - Permission modes, Git changes, process cancellation, and CLI diagnostics
 - Status-bar, editor-title, keyboard, Command Palette, and detached-window entry points
 - Focused workbench launch that hides sidebars without disturbing an existing terminal
+- Unified new-agent launcher with independent new/existing worktree and branch choices

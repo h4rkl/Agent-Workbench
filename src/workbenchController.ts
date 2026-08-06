@@ -505,10 +505,21 @@ export class WorkbenchController implements vscode.Disposable {
         prompt || requestedTitle || `${provider} session`,
         {
           baseBranch: stringField(message, "baseBranch"),
-          branchName: stringField(message, "branchName")
+          branchName: stringField(message, "branchName"),
+          createBranch: message.newBranch !== false
         }
       );
       workspace = worktree.workspace;
+    } else if (message.newBranch === true) {
+      const branch = await this.git.createBranch(
+        workspace,
+        prompt || requestedTitle || `${provider} session`,
+        {
+          baseBranch: stringField(message, "baseBranch"),
+          branchName: stringField(message, "branchName")
+        }
+      );
+      workspace = branch.workspace;
     }
     this.selectedWorktreePath = workspace;
     const timestamp = now();

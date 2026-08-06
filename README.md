@@ -12,6 +12,8 @@ through a VS Code chat provider.
 
 - A worktree-first three-pane editor for launching parallel agents on isolated
   Git branches
+- A unified **New agent in…** launcher for choosing an existing or new
+  worktree independently from an existing, current, or new branch
 - Worktree status, running-agent activity, repository-wide commit history, and
   commit file inspection in one view, with native-style Codicon diff markers
 - Resizable side panes, compact/comfortable density, and a configurable accent
@@ -101,14 +103,16 @@ Development Host after changing the workbench JavaScript or CSS.
 
 1. Click **Local Agents** in the status bar, use the sparkle button in the
    editor title, or run **Local Agents: Toggle Workbench**.
-2. Choose **New parallel task**, select Claude or Codex, and describe the work.
-   Keep **New Worktree** enabled, choose its base branch, and optionally provide
-   a custom branch name. Blank names become `agent/<task>-<timestamp>` branches
-   in a sibling `<repository>-worktrees` directory before the agent starts.
+2. Choose **New task** and use the **New [agent] in [worktree]** controls to
+   select Claude or Codex and either an existing worktree or a new one. Choose
+   the current branch, an available existing branch, or a new branch from any
+   local base. Blank branch names become `agent/<task>-<timestamp>` names.
+   New worktrees live in a sibling `<repository>-worktrees` directory.
    **Commit result** asks the agent to verify and commit its intended changes.
 3. Launch additional agents the same way. The left pane shows every worktree,
    dirty-file count, and running agents. Use **New agent here** when follow-up
-   work should continue on an existing worktree.
+   work should continue on an existing worktree; choose **New branch** there to
+   branch in place. The worktree must be clean before its branch is changed.
 4. Open **Repository history** to inspect commits across all branches. Select a
    commit to see its changed files, open native before/after diffs, or jump to
    the corresponding file in the selected worktree.

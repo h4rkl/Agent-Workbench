@@ -209,7 +209,11 @@ export class GitService {
   public async createWorktree(
     workspace: string,
     title: string,
-    options: { baseBranch?: string; branchName?: string } = {}
+    options: {
+      baseBranch?: string;
+      branchName?: string;
+      createBranch?: boolean;
+    } = {}
   ): Promise<{ workspace: string; branch: string }> {
     const { stdout: repositoryOutput } = await execFileAsync(
       "git",
@@ -229,46 +233,87 @@ export class GitService {
       .slice(0, 36) || "session";
     const suffix = new Date().toISOString().replace(/\D/g, "").slice(0, 17);
     const generatedName = `${slug}-${suffix}`;
-    const branch = options.branchName?.trim() || `agent/${generatedName}`;
-    if (branch.startsWith("refs/") || branch === "HEAD") {
-      throw new Error("Enter a short Git branch name, such as codex/fix-locale.");
-    }
-    try {
-      await execFileAsync("git", ["check-ref-format", "--branch", branch], {
-        encoding: "utf8"
-      });
-    } catch {
-      throw new Error(`Invalid Git branch name: ${branch}`);
-    }
     const branches = await this.listBranches(repository);
-    if (branches.includes(branch)) {
-      throw new Error(`Branch already exists: ${branch}`);
-    }
+    const shouldCreateBranch = options.createBranch !== false;
     const requestedBase = options.baseBranch?.trim();
     const baseBranch = requestedBase || (branches.includes("main") ? "main" : branches[0]);
     if (!baseBranch || !branches.includes(baseBranch)) {
       throw new Error(`Base branch does not exist: ${baseBranch || "(none)"}`);
+    }
+    const branch = shouldCreateBranch
+      ? options.branchName?.trim() || `agent/${generatedName}`
+      : baseBranch;
+    if (shouldCreateBranch) {
+      await this.validateNewBranch(branch, branches);
+    } else {
+      const checkedOut = (await this.listWorktrees(repository)).find(
+        (worktree) => worktree.branch === branch
+      );
+      if (checkedOut) {
+        throw new Error(
+          `Branch ${branch} is already checked out in ${checkedOut.path}.`
+        );
+      }
     }
     const directorySlug = branch
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(0, 64) || generatedName;
-    const directoryName = options.branchName?.trim()
+    const directoryName = shouldCreateBranch && options.branchName?.trim()
       ? `${directorySlug}-${suffix}`
-      : generatedName;
+      : shouldCreateBranch ? generatedName : `${directorySlug}-${suffix}`;
     const worktreesDirectory = path.join(
       path.dirname(repository),
       `${path.basename(repository)}-worktrees`
     );
     const target = path.join(worktreesDirectory, directoryName);
     await mkdir(worktreesDirectory, { recursive: true });
+    const args = shouldCreateBranch
+      ? ["-C", repository, "worktree", "add", "-b", branch, target, baseBranch]
+      : ["-C", repository, "worktree", "add", target, branch];
+    await execFileAsync("git", args, {
+      encoding: "utf8",
+      maxBuffer: 10 * 1024 * 1024
+    });
+    return { workspace: target, branch };
+  }
+
+  public async createBranch(
+    workspace: string,
+    title: string,
+    options: { baseBranch?: string; branchName?: string } = {}
+  ): Promise<{ workspace: string; branch: string }> {
+    const root = await this.repositoryRoot(workspace);
+    if (!root) {
+      throw new Error("The selected workspace is not a Git repository.");
+    }
+    const changes = await this.listChanges(workspace);
+    if (changes.length > 0) {
+      throw new Error(
+        "Commit or stash this worktree's changes before creating a branch in it."
+      );
+    }
+    const branches = await this.listBranches(root);
+    const requestedBase = options.baseBranch?.trim();
+    const baseBranch = requestedBase || (branches.includes("main") ? "main" : branches[0]);
+    if (!baseBranch || !branches.includes(baseBranch)) {
+      throw new Error(`Base branch does not exist: ${baseBranch || "(none)"}`);
+    }
+    const slug = title
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, 36) || "session";
+    const suffix = new Date().toISOString().replace(/\D/g, "").slice(0, 17);
+    const branch = options.branchName?.trim() || `agent/${slug}-${suffix}`;
+    await this.validateNewBranch(branch, branches);
     await execFileAsync(
       "git",
-      ["-C", repository, "worktree", "add", "-b", branch, target, baseBranch],
+      ["-C", workspace, "switch", "-c", branch, baseBranch],
       { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
     );
-    return { workspace: target, branch };
+    return { workspace, branch };
   }
 
   public async listChanges(workspace: string): Promise<WorkspaceChange[]> {
@@ -327,5 +372,24 @@ export class GitService {
       throw new Error("Refusing to open a path outside the selected workspace.");
     }
     return target;
+  }
+
+  private async validateNewBranch(
+    branch: string,
+    existingBranches: string[]
+  ): Promise<void> {
+    if (branch.startsWith("refs/") || branch === "HEAD") {
+      throw new Error("Enter a short Git branch name, such as codex/fix-locale.");
+    }
+    try {
+      await execFileAsync("git", ["check-ref-format", "--branch", branch], {
+        encoding: "utf8"
+      });
+    } catch {
+      throw new Error(`Invalid Git branch name: ${branch}`);
+    }
+    if (existingBranches.includes(branch)) {
+      throw new Error(`Branch already exists: ${branch}`);
+    }
   }
 }

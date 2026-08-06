@@ -16,6 +16,7 @@
     newWorkspace: saved.newWorkspace || "",
     newModel: saved.newModel || "",
     newWorktree: saved.newWorktree !== false,
+    newBranch: typeof saved.newBranch === "boolean" ? saved.newBranch : saved.newWorktree !== false,
     newBaseBranch: saved.newBaseBranch || "",
     newBranchName: saved.newBranchName || "",
     autoCommit: saved.autoCommit !== false,
@@ -52,6 +53,7 @@
       newWorkspace: state.newWorkspace,
       newModel: state.newModel,
       newWorktree: state.newWorktree,
+      newBranch: state.newBranch,
       newBaseBranch: state.newBaseBranch,
       newBranchName: state.newBranchName,
       autoCommit: state.autoCommit,
@@ -238,7 +240,7 @@
     const current = selectedWorktree();
     const agents = current ? sessionsForWorktree(current.path) : [];
     return '<aside class="left-pane"><header class="pane-title"><strong>Worktrees</strong><span class="pane-title-actions"><button class="new-button" data-action="openNew" data-worktree="true">New <kbd>⌘N</kbd></button><button class="icon-button" data-action="cycleFilter" title="Filter agents">' + icon("tune") + '</button><button class="icon-button" data-action="focusAgentSearch" title="Search agents">' + icon("search") + '</button></span></header>' +
-      '<div class="left-scroll"><section class="nav-section"><button class="nav-row ' + (state.view === "new" ? "active" : "") + '" data-action="openNew" data-worktree="true">' + icon("add") + '<span>New parallel task</span></button><button class="nav-row ' + (state.view === "history" ? "active" : "") + '" data-action="showHistory">' + icon("history") + '<span>Repository history</span><span class="nav-count">' + state.snapshot.commits.length + "</span></button></section>" +
+      '<div class="left-scroll"><section class="nav-section"><button class="nav-row ' + (state.view === "new" ? "active" : "") + '" data-action="openNew" data-worktree="true">' + icon("add") + '<span>New task</span></button><button class="nav-row ' + (state.view === "history" ? "active" : "") + '" data-action="showHistory">' + icon("history") + '<span>Repository history</span><span class="nav-count">' + state.snapshot.commits.length + "</span></button></section>" +
       '<section class="worktree-section"><div class="section-label">Repository worktrees <span>' + worktrees.length + '</span></div><div class="worktree-list">' + (worktrees.length ? worktrees.map(worktreeRow).join("") : '<div class="sidebar-empty">Open a Git repository to manage worktrees.</div>') + "</div></section>" +
       '<section class="agents-section"><div class="section-label">Agents on selected worktree <span>' + agents.length + '</span></div><label class="agent-search ' + (state.sessionQuery ? "visible" : "") + '">' + icon("search") + '<input id="agent-search" value="' + attr(state.sessionQuery) + '" placeholder="Filter agents"></label><div class="agent-list">' + (agents.filter((session) => !state.sessionQuery || session.title.toLowerCase().includes(state.sessionQuery.toLowerCase())).map(agentRow).join("") || '<div class="sidebar-empty compact">No agents on this worktree.</div>') + "</div></section></div>" +
       '<footer class="left-footer"><div class="section-label">Tools</div><button class="nav-row" data-action="import">' + icon("import") + '<span>Import agent history</span></button><button class="nav-row" data-action="settings">' + icon("settings") + '<span>Agent settings</span></button><button class="nav-row" data-action="output">' + icon("output") + '<span>Agent output</span></button></footer></aside>';
@@ -258,6 +260,14 @@
     return [...entries.values()].map((workspace) => '<option value="' + attr(workspace.path) + '" ' + selected(current, workspace.path) + '>' + escapeHtml(workspace.name || basename(workspace.path)) + "</option>").join("");
   }
 
+  function worktreeTargetOptions(current) {
+    const entries = new Map();
+    (state.snapshot.worktrees || []).forEach((item) => entries.set(item.path, { path: item.path, name: item.branch }));
+    (state.snapshot.workspaces || []).forEach((item) => { if (!entries.has(item.path)) entries.set(item.path, item); });
+    if (current && !entries.has(current)) entries.set(current, { path: current, name: basename(current) });
+    return '<option value="__new__" ' + (state.newWorktree ? "selected" : "") + '>New worktree</option>' + [...entries.values()].map((workspace) => '<option value="' + attr(workspace.path) + '" ' + (!state.newWorktree ? selected(current, workspace.path) : "") + '>Existing · ' + escapeHtml(workspace.name || basename(workspace.path)) + "</option>").join("");
+  }
+
   function defaultBaseBranch(currentWorktree) {
     const branches = state.snapshot.branches || [];
     if (state.newBaseBranch && branches.includes(state.newBaseBranch)) return state.newBaseBranch;
@@ -273,21 +283,42 @@
     return branches.map((branch) => '<option value="' + attr(branch) + '" ' + selected(current, branch) + '>' + escapeHtml(branch) + "</option>").join("");
   }
 
+  function branchTargetOptions(currentWorktree, baseBranch) {
+    const options = ['<option value="__new__" ' + (state.newBranch ? "selected" : "") + '>New branch</option>'];
+    if (!state.newWorktree) {
+      const branch = currentWorktree?.branch || state.snapshot.branch || baseBranch;
+      options.push('<option value="' + attr(branch) + '" ' + (!state.newBranch ? "selected" : "") + '>Current · ' + escapeHtml(branch) + "</option>");
+      return options.join("");
+    }
+    const checkedOut = new Set((state.snapshot.worktrees || []).map((worktree) => worktree.branch));
+    for (const branch of state.snapshot.branches || []) {
+      const unavailable = checkedOut.has(branch);
+      options.push('<option value="' + attr(branch) + '" ' + (!state.newBranch ? selected(baseBranch, branch) : "") + (unavailable ? " disabled" : "") + '>Existing · ' + escapeHtml(branch) + (unavailable ? " (already in a worktree)" : "") + "</option>");
+    }
+    return options.join("");
+  }
+
   function newSessionView() {
-    const currentWorktree = selectedWorktree();
-    const workspace = state.newWorkspace || (currentWorktree && currentWorktree.path) || state.snapshot.workspaces[0]?.path || "";
+    const selectedTree = selectedWorktree();
+    const workspace = state.newWorkspace || (selectedTree && selectedTree.path) || state.snapshot.workspaces[0]?.path || "";
+    const currentWorktree = state.snapshot.worktrees.find((worktree) => worktree.path === workspace) || selectedTree;
     const provider = state.newProvider || state.snapshot.config.defaultProvider;
     const permission = state.newPermission || state.snapshot.config.defaultPermission;
     const canCommit = permission === "workspace-write" || permission === "full-access";
     const health = state.snapshot.health[provider];
     const baseBranch = defaultBaseBranch(currentWorktree);
-    const branchSetup = state.newWorktree
-      ? '<div class="branch-setup"><span class="branch-setup-title">' + codicon("git-branch-create", "Create branch", "icon") + '<strong>New branch</strong></span><label><span>From</span><span class="branch-select"><select id="new-base-branch">' + baseBranchOptions(baseBranch) + '</select>' + icon("chevron") + '</span></label><label class="branch-name-input"><span>Name</span><input id="new-branch-name" value="' + attr(state.newBranchName) + '" placeholder="codex/fix-breakpoint-default-locale" spellcheck="false"></label></div>'
+    const branchFields = state.newBranch
+      ? '<label><span>From</span><span class="branch-select"><select id="new-base-branch">' + baseBranchOptions(baseBranch) + '</select>' + icon("chevron") + '</span></label><label class="branch-name-input"><span>Name</span><input id="new-branch-name" value="' + attr(state.newBranchName) + '" placeholder="Optional · agent/task-name" spellcheck="false"></label>'
       : "";
-    return '<main class="center-pane new-session-view"><div class="corner-agent">' + icon("agent") + '</div><section class="new-session-card"><div class="new-session-title">New agent in <label class="inline-select folder-select">' + icon("folder") + '<select id="new-workspace">' + workspaceOptions(workspace) + '</select>' + icon("chevron") + '</label> with <label class="inline-select provider-select">' + providerLogo(provider) + '<select id="new-provider"><option value="codex" ' + selected(provider, "codex") + '>Codex</option><option value="claude" ' + selected(provider, "claude") + '>Claude</option></select>' + icon("chevron") + "</label></div>" +
+    const summary = state.newWorktree
+      ? state.newBranch ? "Creates a new worktree and branch from " + baseBranch + "." : "Creates a new worktree on the existing " + baseBranch + " branch."
+      : state.newBranch ? "Creates and checks out a new branch from " + baseBranch + " here." : "Starts on the current " + (currentWorktree?.branch || state.snapshot.branch || "branch") + " branch.";
+    const repositoryField = state.newWorktree ? '<label><span>Repository</span><span class="branch-select repository-select"><select id="new-workspace">' + workspaceOptions(workspace) + '</select>' + icon("chevron") + "</span></label>" : "";
+    const branchSetup = '<div class="branch-setup"><span class="branch-setup-title">' + codicon("git-branch", "Branch", "icon") + '<strong>Start</strong></span>' + repositoryField + '<label class="branch-target"><span>Branch</span><span class="branch-select"><select id="new-branch-target">' + branchTargetOptions(currentWorktree, baseBranch) + '</select>' + icon("chevron") + '</span></label>' + branchFields + '</div><p class="new-session-note">' + escapeHtml(summary) + (state.newBranch ? " Leave the name blank to generate one from the task." : "") + "</p>";
+    return '<main class="center-pane new-session-view"><div class="corner-agent">' + icon("agent") + '</div><section class="new-session-card"><div class="new-session-title">New <label class="inline-select provider-select">' + providerLogo(provider) + '<select id="new-provider"><option value="codex" ' + selected(provider, "codex") + '>Codex agent</option><option value="claude" ' + selected(provider, "claude") + '>Claude agent</option></select>' + icon("chevron") + '</label> in <label class="inline-select folder-select">' + icon("folder") + '<select id="new-worktree-target">' + worktreeTargetOptions(workspace) + '</select>' + icon("chevron") + "</label></div>" +
       '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Select code in an editor, then use <span class="tip-icon"><span class="codicon codicon-add" aria-hidden="true"></span></span> to attach it as precise feedback context.</div><div class="new-composer">' + contextChip() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span class="codicon codicon-sparkle" aria-hidden="true"></span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!state.newDraft.trim() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
-      '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Full access</option></select></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label><label class="worktree-toggle"><input id="new-worktree" type="checkbox" ' + (state.newWorktree ? "checked" : "") + '><span>' + icon("check") + '</span> New Worktree</label><span class="meta-control branch-name">' + icon("branch") + escapeHtml(state.snapshot.branch || currentWorktree?.branch || "main") + "</span></div></div>" +
-      branchSetup + '<p class="new-session-note">' + (state.newWorktree ? "The branch will start from " + escapeHtml(baseBranch) + "; leave its name blank to generate an agent/<task>-<timestamp> name." : "The agent will work directly in the selected worktree.") + "</p></section></main>";
+      '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Full access</option></select></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label></div></div>' +
+      branchSetup + '</section></main>';
   }
 
   function messageCard(message, session) {
@@ -465,7 +496,11 @@
     const current = selectedWorktree();
     state.view = "new";
     state.newWorkspace = (current && current.path) || state.newWorkspace || state.snapshot.workspaces[0]?.path || "";
-    if (typeof createWorktree === "boolean") state.newWorktree = createWorktree;
+    if (typeof createWorktree === "boolean") {
+      state.newWorktree = createWorktree;
+      state.newBranch = createWorktree;
+      if (!createWorktree && current?.branch) state.newBaseBranch = current.branch;
+    }
     state.newProvider = state.newProvider || state.snapshot.config.defaultProvider;
     state.newPermission = state.newPermission || state.snapshot.config.defaultPermission;
     persist();
@@ -490,12 +525,13 @@
     const prompt = state.newDraft.trim();
     const workspace = state.newWorkspace || selectedWorktree()?.path;
     if (!prompt || !workspace) {
-      showToast("Choose a worktree and describe the task.", "error");
+      showToast("Choose where to start and describe the task.", "error");
       return;
     }
     state.startingSession = true;
     persist();
     render({ preserveFocus: true });
+    const startWorktree = state.snapshot.worktrees.find((item) => item.path === workspace) || selectedWorktree();
     post("newSession", {
       provider: state.newProvider || state.snapshot.config.defaultProvider,
       workspace,
@@ -503,8 +539,9 @@
       model: state.newModel,
       prompt: preparePrompt(prompt, state.newPermission || state.snapshot.config.defaultPermission),
       newWorktree: state.newWorktree,
-      baseBranch: state.newWorktree ? defaultBaseBranch(selectedWorktree()) : "",
-      branchName: state.newWorktree ? state.newBranchName.trim() : ""
+      newBranch: state.newBranch,
+      baseBranch: state.newWorktree || state.newBranch ? defaultBaseBranch(startWorktree) : "",
+      branchName: state.newBranch ? state.newBranchName.trim() : ""
     });
   }
 
@@ -612,19 +649,42 @@
     });
 
     const workspace = document.getElementById("new-workspace");
+    const worktreeTarget = document.getElementById("new-worktree-target");
     const provider = document.getElementById("new-provider");
     const permission = document.getElementById("new-permission");
     const model = document.getElementById("new-model");
-    const worktree = document.getElementById("new-worktree");
     const autoCommit = document.getElementById("auto-commit");
+    const branchTarget = document.getElementById("new-branch-target");
     const baseBranch = document.getElementById("new-base-branch");
     const branchName = document.getElementById("new-branch-name");
-    if (workspace) workspace.addEventListener("change", () => { state.newWorkspace = workspace.value; persist(); });
+    if (workspace) workspace.addEventListener("change", () => { state.newWorkspace = workspace.value; state.newBaseBranch = ""; persist(); render({ preserveFocus: true }); });
+    if (worktreeTarget) worktreeTarget.addEventListener("change", () => {
+      if (worktreeTarget.value === "__new__") {
+        state.newWorktree = true;
+        state.newBranch = true;
+      } else {
+        state.newWorktree = false;
+        state.newBranch = false;
+        state.newWorkspace = worktreeTarget.value;
+        state.newBaseBranch = state.snapshot.worktrees.find((item) => item.path === worktreeTarget.value)?.branch || "";
+      }
+      persist();
+      render({ preserveFocus: true });
+    });
     if (provider) provider.addEventListener("change", () => { state.newProvider = provider.value; state.newModel = state.snapshot.config.defaultModels[provider.value] || ""; persist(); render({ preserveFocus: true }); });
     if (permission) permission.addEventListener("change", () => { state.newPermission = permission.value; if (permission.value === "plan" || permission.value === "read-only") state.autoCommit = false; persist(); render({ preserveFocus: true }); });
     if (model) model.addEventListener("input", () => { state.newModel = model.value; persist(); });
-    if (worktree) worktree.addEventListener("change", () => { state.newWorktree = worktree.checked; persist(); render({ preserveFocus: true }); });
     if (autoCommit) autoCommit.addEventListener("change", () => { state.autoCommit = autoCommit.checked; persist(); });
+    if (branchTarget) branchTarget.addEventListener("change", () => {
+      state.newBranch = branchTarget.value === "__new__";
+      if (state.newBranch && !state.newWorktree) {
+        state.newBaseBranch = state.snapshot.worktrees.find((item) => item.path === state.newWorkspace)?.branch || state.snapshot.branch || "";
+      } else if (!state.newBranch) {
+        state.newBaseBranch = branchTarget.value;
+      }
+      persist();
+      render({ preserveFocus: true });
+    });
     if (baseBranch) baseBranch.addEventListener("change", () => { state.newBaseBranch = baseBranch.value; persist(); render({ preserveFocus: true }); });
     if (branchName) branchName.addEventListener("input", () => { state.newBranchName = branchName.value; persist(); });
 

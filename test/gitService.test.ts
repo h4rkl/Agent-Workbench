@@ -83,6 +83,40 @@ describe("GitService worktree orchestration", () => {
     })).rejects.toThrow(`Branch already exists: ${created.branch}`);
   });
 
+  it("creates a worktree on an existing branch", async () => {
+    const service = new GitService();
+    await execFileAsync("git", ["-C", repository, "branch", "stable"]);
+
+    const created = await service.createWorktree(repository, "Use stable", {
+      baseBranch: "stable",
+      createBranch: false
+    });
+    const worktrees = await service.listWorktrees(repository);
+
+    expect(created.branch).toBe("stable");
+    expect(worktrees).toHaveLength(2);
+    expect(worktrees[1]).toMatchObject({ branch: "stable" });
+    await expect(service.createWorktree(repository, "Duplicate stable", {
+      baseBranch: "stable",
+      createBranch: false
+    })).rejects.toThrow("Branch stable is already checked out");
+  });
+
+  it("creates a new branch inside a clean existing worktree", async () => {
+    const service = new GitService();
+    const created = await service.createBranch(repository, "Continue here", {
+      baseBranch: "main",
+      branchName: "agent/continue-here"
+    });
+
+    expect(created).toEqual({ workspace: repository, branch: "agent/continue-here" });
+    await expect(service.currentBranch(repository)).resolves.toBe("agent/continue-here");
+
+    await writeFile(join(repository, "README.md"), "uncommitted\n", "utf8");
+    await expect(service.createBranch(repository, "Unsafe switch"))
+      .rejects.toThrow("Commit or stash this worktree's changes");
+  });
+
   it("reports changes and reads files from a commit", async () => {
     const service = new GitService();
     await writeFile(join(repository, "README.md"), "changed\n", "utf8");
