@@ -13,6 +13,7 @@ vi.mock("vscode", () => ({
 }));
 
 import { GitService } from "../src/gitService";
+import { layoutHistoryGraph } from "../src/historyGraph";
 
 const execFileAsync = promisify(execFile);
 
@@ -49,6 +50,28 @@ describe("GitService worktree orchestration", () => {
     expect(worktrees[0]).toMatchObject({ path: canonicalRepository, branch: "main", isMain: true });
     expect(worktrees[1]).toMatchObject({ path: canonicalWorktree, branch: created.branch });
     expect(history[0]).toMatchObject({ subject: "initial commit", author: "Agent Test" });
+  });
+
+  it("returns the repository topology used by the history graph", async () => {
+    const service = new GitService();
+    await execFileAsync("git", ["-C", repository, "branch", "topic"]);
+    await writeFile(join(repository, "README.md"), "main\n", "utf8");
+    await execFileAsync("git", ["-C", repository, "add", "README.md"]);
+    await execFileAsync("git", ["-C", repository, "commit", "-m", "advance main"]);
+    await execFileAsync("git", ["-C", repository, "switch", "topic"]);
+    await writeFile(join(repository, "topic.txt"), "topic\n", "utf8");
+    await execFileAsync("git", ["-C", repository, "add", "topic.txt"]);
+    await execFileAsync("git", ["-C", repository, "commit", "-m", "topic work"]);
+    await execFileAsync("git", ["-C", repository, "switch", "main"]);
+    await execFileAsync("git", ["-C", repository, "merge", "--no-ff", "topic", "-m", "merge topic"]);
+
+    const history = await service.listHistory(repository);
+    const graph = layoutHistoryGraph(history);
+
+    expect(history[0]).toMatchObject({ subject: "merge topic" });
+    expect(history[0]?.parents).toHaveLength(2);
+    expect(graph.laneCount).toBe(2);
+    expect(graph.edges.some((edge) => edge.secondary)).toBe(true);
   });
 
   it("creates a custom branch from the selected base branch", async () => {

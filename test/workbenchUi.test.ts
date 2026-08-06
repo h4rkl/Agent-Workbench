@@ -1,11 +1,10 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 import {
-  GitgraphCore,
-  TemplateName,
-  templateExtend,
-  toSvgPath
-} from "@gitgraph/core";
+  historyGraphEdgePath,
+  historyGraphNodePosition,
+  layoutHistoryGraph
+} from "../src/historyGraph";
 import { describe, expect, it, vi } from "vitest";
 
 describe("workbench webview", () => {
@@ -37,7 +36,11 @@ describe("workbench webview", () => {
 
     Object.assign(globalThis, {
       acquireVsCodeApi: () => ({ getState: () => ({}), setState: vi.fn(), postMessage }),
-      GitgraphCoreApi: { GitgraphCore, TemplateName, templateExtend, toSvgPath },
+      HistoryGraphApi: {
+        historyGraphEdgePath,
+        historyGraphNodePosition,
+        layoutHistoryGraph
+      },
       document: {
         activeElement: null,
         getElementById: (id: string) => id === "app" ? app : null,
@@ -102,7 +105,7 @@ describe("workbench webview", () => {
             email: "dev@example.com",
             date: new Date().toISOString(),
             subject: "Initial commit",
-            refs: ["HEAD -> main"]
+            refs: ["HEAD -> main", "origin/main"]
           }],
           selectedWorktreePath: "/repo",
           config: {
@@ -157,9 +160,12 @@ describe("workbench webview", () => {
       currentTarget: showHistoryButton,
       target: showHistoryButton
     });
-    expect(app.innerHTML).toContain("gitgraph-canvas");
-    expect(app.innerHTML).toContain('data-gitgraph-hash="0123456789abcdef"');
-    expect(app.innerHTML).toContain('cy="25.5"');
+    expect(app.innerHTML).toContain("history-graph-canvas");
+    expect(app.innerHTML).toContain('data-history-hash="0123456789abcdef"');
+    expect(app.innerHTML).toContain('cy="17"');
+    expect(app.innerHTML).toContain("Description");
+    expect(app.innerHTML).toContain('class="commit-ref head"');
+    expect(app.innerHTML).toContain('class="commit-ref-remote">origin');
     expect(app.innerHTML).toContain('class="history-row latest ');
   });
 });

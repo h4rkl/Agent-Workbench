@@ -380,89 +380,134 @@
     return '<button class="mini-commit" data-action="selectCommit" data-hash="' + attr(commit.hash) + '"><span class="commit-node"></span><span><strong>' + escapeHtml(commit.subject) + '</strong><small><code>' + escapeHtml(commit.hash.slice(0, 7)) + "</code> · " + escapeHtml(commit.author) + " · " + timeAgo(commit.date) + "</small></span>" + (commit.refs[0] ? '<span class="ref-label">' + escapeHtml(commit.refs[0].replace(/^HEAD -> /, "")) + "</span>" : "") + "</button>";
   }
 
-  function normalizedGitgraphRefs(refs) {
-    return [...new Set((refs || []).flatMap((rawRef) => {
-      const ref = String(rawRef || "").trim();
-      if (!ref) return [];
-      if (ref.startsWith("HEAD -> ")) return ["HEAD", ref.slice(8)];
-      const symbolic = ref.match(/^.+ -> (.+)$/);
-      return symbolic ? [symbolic[1]] : [ref];
-    }))];
+  const historyGraphColors = [
+    "var(--vscode-charts-blue, #209cee)",
+    "var(--vscode-charts-purple, #e30c8c)",
+    "var(--vscode-charts-green, #20c75a)",
+    "var(--vscode-charts-orange, #f59e0b)",
+    "var(--vscode-charts-red, #f05a67)",
+    "var(--vscode-charts-yellow, #d9b72b)",
+    "var(--vscode-charts-foreground, #26b5ce)",
+    "var(--agent-accent)"
+  ];
+
+  function historyGraphColor(index) {
+    return historyGraphColors[index % historyGraphColors.length];
   }
 
-  function gitgraphImportData(commits) {
-    const parentHashes = new Set(commits.flatMap((commit) => commit.parents || []));
-    return commits.map((commit) => {
-      const refs = normalizedGitgraphRefs(commit.refs);
-      const hasBranch = refs.some((ref) => ref !== "HEAD" && !ref.startsWith("tag: "));
-      if (!parentHashes.has(commit.hash) && !hasBranch) {
-        refs.push("detached/" + commit.hash.slice(0, 7));
+  function historyRefEntries(refs) {
+    const entries = [];
+    const seen = new Set();
+    for (const value of refs || []) {
+      const raw = String(value || "").trim();
+      if (!raw) continue;
+      let label = raw;
+      let head = false;
+      if (raw.startsWith("HEAD -> ")) {
+        label = raw.slice(8);
+        head = true;
+      } else if (raw.includes(" -> ")) {
+        const [source, target] = raw.split(" -> ");
+        if (source && /\/HEAD$/.test(source)) continue;
+        label = target || source || raw;
       }
-      const timestamp = new Date(commit.date).getTime();
-      return {
-        refs,
-        hash: commit.hash,
-        hashAbbrev: commit.hash.slice(0, 7),
-        parents: commit.parents || [],
-        parentsAbbrev: (commit.parents || []).map((parent) => parent.slice(0, 7)),
-        author: { name: commit.author, email: commit.email, timestamp },
-        committer: { name: commit.author, email: commit.email, timestamp },
-        subject: commit.subject,
-        body: ""
-      };
-    });
+      const tag = label.startsWith("tag: ");
+      if (tag) label = label.slice(5);
+      const remote = label.match(/^(origin|upstream)\/(.+)$/);
+      const key = (tag ? "tag:" : remote ? "remote:" : "local:") + label;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      entries.push({
+        label,
+        shortLabel: remote ? remote[2] : label,
+        remote: remote ? remote[1] : "",
+        tag,
+        head
+      });
+    }
+
+    const localLabels = new Set(entries.filter((entry) => !entry.remote && !entry.tag).map((entry) => entry.label));
+    return entries.filter((entry) => !entry.remote || !localLabels.has(entry.shortLabel)).map((entry) => {
+      if (entry.remote || entry.tag) return entry;
+      const matchingRemote = entries.find((candidate) => candidate.remote && candidate.shortLabel === entry.label);
+      return matchingRemote ? Object.assign({}, entry, { remote: matchingRemote.remote }) : entry;
+    }).slice(0, 3);
   }
 
-  function gitgraphPresentation(commits) {
-    const rowHeight = state.snapshot.config.density === "compact" ? 45 : 51;
-    const fallback = { rowHeight, width: 82, svg: "" };
-    if (!commits.length || !globalThis.GitgraphCoreApi) return fallback;
+  function historyRefsMarkup(refs, color) {
+    const entries = historyRefEntries(refs);
+    if (!entries.length) return "";
+    return '<span class="commit-refs">' + entries.map((entry) => {
+      const kind = entry.tag ? " tag" : entry.remote && entry.label.startsWith(entry.remote + "/") ? " remote" : entry.head ? " head" : "";
+      const glyph = codicon(entry.tag ? "tag" : "git-branch", "", "commit-ref-glyph");
+      return '<em class="commit-ref' + kind + '" style="--history-lane-color:' + attr(color) + '" title="' + attr(entry.label) + '"><span class="commit-ref-icon">' + glyph + '</span><span class="commit-ref-name">' + escapeHtml(entry.label) + "</span>" + (entry.remote && !entry.label.startsWith(entry.remote + "/") ? '<span class="commit-ref-remote">' + escapeHtml(entry.remote) + "</span>" : "") + "</em>";
+    }).join("") + "</span>";
+  }
+
+  function historyDate(value) {
+    const date = new Date(value);
+    if (!Number.isFinite(date.getTime())) return "";
+    return new Intl.DateTimeFormat(undefined, {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit"
+    }).format(date).replace(/,/g, "");
+  }
+
+  function historyGraphPresentation(commits) {
+    const rowHeight = state.snapshot.config.density === "compact" ? 29 : 34;
+    const fallback = { rowHeight, width: 132, svg: "", nodesByHash: new Map() };
+    if (!commits.length || !globalThis.HistoryGraphApi) return fallback;
     try {
-      const api = globalThis.GitgraphCoreApi;
-      const template = api.templateExtend(api.TemplateName.Metro, {
-        colors: ["var(--agent-accent)", "#2ea8e5", "#e5a52e", "#a371f7", "#3fb950", "#f778ba"],
-        branch: { spacing: 17, lineWidth: 2 },
-        commit: {
-          spacing: rowHeight,
-          dot: { size: 9, strokeWidth: 2 },
-          message: { display: false }
-        }
-      });
-      const core = new api.GitgraphCore({
-        template,
-        initCommitOffsetX: 16,
-        initCommitOffsetY: rowHeight / 2
-      });
-      core.getUserApi().import(gitgraphImportData(commits));
-      const rendered = core.getRenderedData();
-      const paths = Array.from(rendered.branchesPaths).map(([branch, points]) => {
-        const path = api.toSvgPath(points, true, true);
-        return '<path d="' + attr(path) + '" fill="none" stroke="' + attr(branch.computedColor || branch.style.color || "var(--agent-accent)") + '" stroke-width="' + (branch.style.lineWidth || 2) + '" stroke-linecap="round" stroke-linejoin="round"></path>';
+      const api = globalThis.HistoryGraphApi;
+      const layout = api.layoutHistoryGraph(commits);
+      const laneCount = Math.max(layout.laneCount, 1);
+      const laneWidth = clamp(Math.floor((210 - 20) / Math.max(1, laneCount - 1)), 14, 20);
+      const geometry = { rowHeight, laneWidth, offsetX: 20 };
+      const graphHeight = commits.length * rowHeight;
+      const lastLaneX = geometry.offsetX + (laneCount - 1) * laneWidth;
+      const width = clamp(lastLaneX + 34, 132, 232);
+      const paths = layout.edges.map((edge) => {
+        const color = historyGraphColor(edge.colorIndex);
+        return '<path class="history-graph-edge' + (edge.secondary ? " secondary" : "") + (edge.boundary ? " boundary" : "") + '" data-history-parent="' + attr(edge.toHash) + '" d="' + attr(api.historyGraphEdgePath(edge, geometry)) + '" fill="none" stroke="' + attr(color) + '"></path>';
       }).join("");
-      const dots = rendered.commits.map((commit) => '<circle data-gitgraph-hash="' + attr(commit.hash) + '" cx="' + commit.x + '" cy="' + commit.y + '" r="' + Math.max(3, (commit.style.dot.size || 8) / 2) + '" fill="var(--vscode-editor-background)" stroke="' + attr(commit.style.color || "var(--agent-accent)") + '" stroke-width="' + (commit.style.dot.strokeWidth || 2) + '"></circle>').join("");
-      const maxX = rendered.commits.reduce((maximum, commit) => Math.max(maximum, commit.x), 0);
-      const width = clamp(maxX + 34, 82, 260);
+      const nodesByHash = new Map(layout.nodes.map((node) => [node.hash, node]));
+      const dots = layout.nodes.map((node) => {
+        const commit = commits[node.index];
+        const position = api.historyGraphNodePosition(node, geometry);
+        const hasRef = Boolean(commit && commit.refs && commit.refs.length);
+        const isHead = Boolean(commit && commit.refs && commit.refs.some((ref) => String(ref).startsWith("HEAD -> ")));
+        const color = historyGraphColor(node.colorIndex);
+        return '<circle class="history-graph-node' + (hasRef ? " has-ref" : "") + (isHead ? " head" : "") + '" data-history-hash="' + attr(node.hash) + '" cx="' + position.x + '" cy="' + position.y + '" r="' + (isHead ? 4.5 : hasRef ? 4 : 3.25) + '" fill="' + (hasRef ? "var(--vscode-editor-background)" : attr(color)) + '" stroke="' + attr(color) + '"></circle>';
+      }).join("");
       return {
         rowHeight,
         width,
-        svg: '<svg class="gitgraph-canvas" width="' + width + '" height="' + (commits.length * rowHeight) + '" viewBox="0 0 ' + width + " " + (commits.length * rowHeight) + '" aria-hidden="true">' + paths + dots + "</svg>"
+        nodesByHash,
+        svg: '<svg class="history-graph-canvas" width="' + width + '" height="' + graphHeight + '" viewBox="0 0 ' + width + " " + graphHeight + '" aria-hidden="true">' + paths + dots + "</svg>"
       };
     } catch {
       return fallback;
     }
   }
 
-  function historyRows(commits) {
+  function historyRows(commits, graph) {
     return commits.map((commit, index) => {
-      return '<button class="history-row ' + (index === 0 ? "latest " : "") + (state.selectedCommit === commit.hash ? "active" : "") + '" data-action="selectCommit" data-hash="' + attr(commit.hash) + '"><span class="gitgraph-slot"></span><span class="commit-copy"><strong>' + escapeHtml(commit.subject) + '<span class="commit-refs">' + commit.refs.slice(0, 3).map((ref) => '<em>' + escapeHtml(ref.replace(/^HEAD -> /, "")) + "</em>").join("") + '</span></strong><small><code>' + escapeHtml(commit.hash.slice(0, 8)) + "</code><span>" + escapeHtml(commit.author) + "</span><span>" + timeAgo(commit.date) + "</span></small></span></button>";
+      const node = graph.nodesByHash.get(commit.hash);
+      const color = historyGraphColor(node ? node.colorIndex : 0);
+      const refs = historyRefsMarkup(commit.refs, color);
+      const date = historyDate(commit.date);
+      return '<button class="history-row ' + (index === 0 ? "latest " : "") + (state.selectedCommit === commit.hash ? "active" : "") + '" data-action="selectCommit" data-hash="' + attr(commit.hash) + '" title="' + attr(commit.subject) + '"><span class="history-graph-slot"></span><span class="history-description">' + refs + '<strong class="history-subject">' + escapeHtml(commit.subject) + '</strong></span><time class="history-date" datetime="' + attr(commit.date) + '">' + escapeHtml(date) + '</time><span class="history-author">' + escapeHtml(commit.author) + '</span><code class="history-hash">' + escapeHtml(commit.hash.slice(0, 8)) + "</code></button>";
     }).join("");
   }
 
   function historyView() {
     const commits = state.snapshot.commits || [];
-    const graph = gitgraphPresentation(commits);
-    const rows = commits.length ? graph.svg + historyRows(commits) : '<div class="history-empty">No Git history was found for this workspace.</div>';
-    return `<main class="center-pane history-view" style="--history-graph-width:${graph.width}px;--history-row-height:${graph.rowHeight}px"><header class="history-header"><div><span class="eyebrow">Repository</span><h1>Version history</h1><p>Commits across every branch and agent worktree.</p></div><div class="header-actions"><button class="secondary-button" data-action="refreshRepository">${icon("refresh")}Refresh</button></div></header><div class="history-column-header"><span>Graph</span><span>Commit</span></div><div class="history-list">${rows}</div></main>`;
+    const graph = historyGraphPresentation(commits);
+    const rows = commits.length ? graph.svg + historyRows(commits, graph) : '<div class="history-empty">No Git history was found for this workspace.</div>';
+    return `<main class="center-pane history-view" style="--history-graph-width:${graph.width}px;--history-row-height:${graph.rowHeight}px"><header class="history-header"><div><span class="eyebrow">Repository</span><h1>Version history</h1><p>Commits across every branch and agent worktree.</p></div><div class="header-actions"><button class="secondary-button" data-action="refreshRepository">${icon("refresh")}Refresh</button></div></header><div class="history-column-header"><span>Graph</span><span>Description</span><span>Date</span><span>Author</span><span>Commit</span></div><div class="history-list">${rows}</div></main>`;
   }
 
   function centerPane() {

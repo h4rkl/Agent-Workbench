@@ -22,8 +22,7 @@ await Promise.all([
   copyIfPresent("node_modules/@vscode/codicons/dist/codicon.css", "media/codicon.css"),
   copyIfPresent("node_modules/@vscode/codicons/dist/codicon.ttf", "media/codicon.ttf"),
   copyIfPresent("node_modules/@vscode/codicons/LICENSE", "media/codicon.LICENSE.txt"),
-  copyIfPresent("node_modules/@vscode/codicons/LICENSE-CODE", "media/codicon.LICENSE-CODE.txt"),
-  copyIfPresent("node_modules/@gitgraph/core/LICENSE.md", "media/gitgraph-core.LICENSE.md")
+  copyIfPresent("node_modules/@vscode/codicons/LICENSE-CODE", "media/codicon.LICENSE-CODE.txt")
 ]);
 
 const extensionOptions = {
@@ -38,12 +37,12 @@ const extensionOptions = {
   logLevel: "info"
 };
 
-const gitgraphOptions = {
-  entryPoints: ["src/gitgraphWebview.ts"],
+const historyGraphOptions = {
+  entryPoints: ["src/historyGraphWebview.ts"],
   bundle: true,
-  outfile: "media/gitgraph-core.js",
+  outfile: "media/history-graph.js",
   format: "iife",
-  globalName: "GitgraphCoreApi",
+  globalName: "HistoryGraphApi",
   platform: "browser",
   target: "es2022",
   minify: true,
@@ -53,13 +52,13 @@ const gitgraphOptions = {
 if (watch) {
   const contexts = await Promise.all([
     esbuild.context(extensionOptions),
-    esbuild.context(gitgraphOptions)
+    esbuild.context(historyGraphOptions)
   ]);
   await Promise.all(contexts.map((context) => context.watch()));
   console.log("Watching extension sources…");
 } else {
   await Promise.all([
     esbuild.build(extensionOptions),
-    esbuild.build(gitgraphOptions)
+    esbuild.build(historyGraphOptions)
   ]);
 }

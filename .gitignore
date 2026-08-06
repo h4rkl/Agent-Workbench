@@ -1,7 +1,6 @@
 node_modules/
 dist/
-media/gitgraph-core.js
-media/gitgraph-core.LICENSE.md
+media/history-graph.js
 *.vsix
 .DS_Store
 coverage/
