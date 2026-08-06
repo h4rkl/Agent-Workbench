@@ -222,6 +222,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .provider-logo { width: 22px; height: 22px; flex: 0 0 auto; display: inline-grid; place-items: center; border-radius: 6px; font-size: 12px; font-weight: 750; }
 .provider-logo.codex { background: color-mix(in srgb, #10a37f 18%, transparent); color: #29b994; font-size: 17px; }
 .provider-logo.claude { background: color-mix(in srgb, #d97757 18%, transparent); color: #df7959; }
+.provider-logo.grok { background: color-mix(in srgb, #8b5cf6 20%, transparent); color: #a78bfa; }
 .provider-logo .codicon { font-size: inherit; }
 .run-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid color-mix(in srgb, var(--agent-accent) 25%, transparent); border-top-color: var(--agent-accent); border-radius: 50%; animation: spin .75s linear infinite; }
 
@@ -238,6 +239,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .folder-select select { max-width: 260px; }
 .provider-select .provider-logo { width: 19px; height: 19px; font-size: 10px; }
 .provider-select .provider-logo.codex { font-size: 14px; }
+.provider-select .provider-logo.grok { font-size: 12px; }
 .prompt-shell { border: 1px solid var(--hairline); border-radius: 7px; overflow: hidden; background: var(--vscode-input-background); box-shadow: 0 7px 25px rgba(0, 0, 0, .1); }
 .prompt-shell:focus-within { border-color: var(--vscode-focusBorder); }
 .tip-line { min-height: 34px; padding: 7px 10px; border-bottom: 1px solid var(--subtle-line); background: color-mix(in srgb, var(--sidebar-bg) 82%, var(--vscode-editor-background)); color: var(--muted); font-size: 11px; }

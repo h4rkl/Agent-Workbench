@@ -1,4 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import * as path from "node:path";
 import * as readline from "node:readline";
 import type { OutputChannel } from "vscode";
 import { AgentEventParser } from "./agentEvents";
@@ -39,6 +42,24 @@ function claudePermissionArgs(permission: PermissionMode): string[] {
     ];
   }
   return ["--permission-mode", "acceptEdits"];
+}
+
+export function grokPermissionArgs(
+  permission: PermissionMode,
+  includeSandbox = true
+): string[] {
+  const sandbox = (profile: string): string[] =>
+    includeSandbox ? ["--sandbox", profile] : [];
+  if (permission === "full-access") {
+    return ["--always-approve", ...sandbox("off")];
+  }
+  if (permission === "workspace-write") {
+    return ["--always-approve", ...sandbox("workspace")];
+  }
+  if (permission === "plan") {
+    return ["--permission-mode", "plan", ...sandbox("read-only")];
+  }
+  return ["--permission-mode", "dontAsk", ...sandbox("read-only")];
 }
 
 function buildCodexArgs(request: RunRequest): string[] {
@@ -90,6 +111,24 @@ function buildClaudeArgs(request: RunRequest): string[] {
   return args;
 }
 
+export function buildGrokArgs(request: RunRequest, promptFile: string): string[] {
+  const { session } = request;
+  const args = [
+    "--no-auto-update",
+    "--output-format",
+    "streaming-json",
+    ...grokPermissionArgs(session.permission, !session.nativeSessionId)
+  ];
+  if (session.model) {
+    args.push("--model", session.model);
+  }
+  if (session.nativeSessionId) {
+    args.push("--resume", session.nativeSessionId);
+  }
+  args.push("--prompt-file", promptFile);
+  return args;
+}
+
 function terminate(child: ChildProcessWithoutNullStreams): void {
   if (child.killed) {
     return;
@@ -110,15 +149,26 @@ export class AgentRunner {
     request: RunRequest,
     onEvent: (event: AgentEvent) => void
   ): RunningAgent {
+    let promptDirectory: string | undefined;
+    let promptFile: string | undefined;
+    if (request.session.provider === "grok") {
+      promptDirectory = mkdtempSync(path.join(tmpdir(), "local-agent-grok-"));
+      promptFile = path.join(promptDirectory, "prompt.txt");
+      writeFileSync(promptFile, request.prompt, { encoding: "utf8", mode: 0o600 });
+    }
     const args =
       request.session.provider === "claude"
         ? buildClaudeArgs(request)
-        : buildCodexArgs(request);
+        : request.session.provider === "grok"
+          ? buildGrokArgs(request, promptFile!)
+          : buildCodexArgs(request);
     const env = { ...process.env };
     if (request.session.provider === "claude") {
       env.CLAUDE_CONFIG_DIR = request.userDirectory;
-    } else {
+    } else if (request.session.provider === "codex") {
       env.CODEX_HOME = request.userDirectory;
+    } else {
+      env.GROK_HOME = request.userDirectory;
     }
 
     this.output.appendLine(
@@ -164,7 +214,7 @@ export class AgentRunner {
     child.stdin.on("error", (error) => {
       this.output.appendLine(`[${request.session.provider}:stdin] ${error.message}`);
     });
-    child.stdin.end(request.prompt);
+    child.stdin.end(request.session.provider === "grok" ? undefined : request.prompt);
 
     const done = new Promise<RunOutcome>((resolve) => {
       child.once("error", (error) => {
@@ -189,8 +239,14 @@ export class AgentRunner {
       });
     });
 
+    const cleanedDone = done.finally(() => {
+      if (promptDirectory) {
+        rmSync(promptDirectory, { recursive: true, force: true });
+      }
+    });
+
     return {
-      done,
+      done: cleanedDone,
       cancel: () => {
         cancelled = true;
         terminate(child);

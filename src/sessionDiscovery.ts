@@ -1,6 +1,6 @@
 import { createReadStream } from "node:fs";
 import { randomUUID } from "node:crypto";
-import { readdir, stat } from "node:fs/promises";
+import { readFile, readdir, stat } from "node:fs/promises";
 import * as path from "node:path";
 import * as readline from "node:readline";
 import type { OutputChannel } from "vscode";
@@ -20,6 +20,10 @@ function isRecord(value: unknown): value is JsonRecord {
 
 function stringValue(value: unknown): string | undefined {
   return typeof value === "string" ? value : undefined;
+}
+
+function recordValue(value: unknown): JsonRecord | undefined {
+  return isRecord(value) ? value : undefined;
 }
 
 function compactTitle(value: string): string {
@@ -71,7 +75,11 @@ function conversationalText(value: unknown): string {
     .join("\n");
 }
 
-async function walkJsonl(root: string, limit: number): Promise<string[]> {
+async function walkFiles(
+  root: string,
+  limit: number,
+  matches: (name: string) => boolean
+): Promise<string[]> {
   const candidates: Array<{ path: string; mtimeMs: number }> = [];
   const queue = [root];
 
@@ -90,7 +98,7 @@ async function walkJsonl(root: string, limit: number): Promise<string[]> {
       const entryPath = path.join(current, entry.name);
       if (entry.isDirectory()) {
         queue.push(entryPath);
-      } else if (entry.isFile() && entry.name.endsWith(".jsonl")) {
+      } else if (entry.isFile() && matches(entry.name)) {
         try {
           const metadata = await stat(entryPath);
           candidates.push({ path: entryPath, mtimeMs: metadata.mtimeMs });
@@ -105,6 +113,14 @@ async function walkJsonl(root: string, limit: number): Promise<string[]> {
     .sort((a, b) => b.mtimeMs - a.mtimeMs)
     .slice(0, limit)
     .map((candidate) => candidate.path);
+}
+
+function walkJsonl(root: string, limit: number): Promise<string[]> {
+  return walkFiles(root, limit, (name) => name.endsWith(".jsonl"));
+}
+
+function walkGrokSummaries(root: string, limit: number): Promise<string[]> {
+  return walkFiles(root, limit, (name) => name === "summary.json");
 }
 
 async function readJsonLines(
@@ -210,6 +226,36 @@ async function summarizeClaude(filePath: string): Promise<NativeSessionSummary |
   };
 }
 
+async function summarizeGrok(filePath: string): Promise<NativeSessionSummary | undefined> {
+  const parsed: unknown = JSON.parse(await readFile(filePath, "utf8"));
+  if (!isRecord(parsed) || !isRecord(parsed.info)) {
+    return undefined;
+  }
+  const nativeSessionId = stringValue(parsed.info.id) ?? "";
+  const workspace = stringValue(parsed.info.cwd) ?? "";
+  if (!nativeSessionId || !workspace) {
+    return undefined;
+  }
+  const metadata = await stat(filePath);
+  const title = compactTitle(
+    stringValue(parsed.generated_title) ??
+      stringValue(parsed.session_summary) ??
+      "Grok session"
+  );
+  return {
+    key: `grok:${nativeSessionId}`,
+    provider: "grok",
+    nativeSessionId,
+    workspace,
+    title,
+    updatedAt:
+      stringValue(parsed.last_active_at) ??
+      stringValue(parsed.updated_at) ??
+      metadata.mtime.toISOString(),
+    sourcePath: path.join(path.dirname(filePath), "updates.jsonl")
+  };
+}
+
 function pushMessage(
   messages: AgentMessage[],
   role: AgentMessage["role"],
@@ -271,6 +317,48 @@ async function readClaudeHistory(filePath: string): Promise<AgentMessage[]> {
   return messages;
 }
 
+function appendGrokMessage(
+  messages: AgentMessage[],
+  role: "user" | "assistant",
+  content: string,
+  timestamp?: string
+): void {
+  if (!content.trim()) {
+    return;
+  }
+  const previous = messages.at(-1);
+  if (previous?.role === role) {
+    previous.content += content;
+    return;
+  }
+  messages.push({
+    id: `imported-${messages.length}-${Date.now()}`,
+    role,
+    content,
+    createdAt: timestamp || new Date().toISOString()
+  });
+  if (messages.length > 200) {
+    messages.shift();
+  }
+}
+
+async function readGrokHistory(filePath: string): Promise<AgentMessage[]> {
+  const messages: AgentMessage[] = [];
+  await readJsonLines(filePath, (record) => {
+    const params = recordValue(record.params);
+    const update = recordValue(params?.update);
+    const content = recordValue(update?.content);
+    const text = stringValue(content?.text) ?? "";
+    const timestamp = stringValue(record.timestamp);
+    if (update?.sessionUpdate === "user_message_chunk") {
+      appendGrokMessage(messages, "user", text, timestamp);
+    } else if (update?.sessionUpdate === "agent_message_chunk") {
+      appendGrokMessage(messages, "assistant", text, timestamp);
+    }
+  });
+  return messages;
+}
+
 export class SessionDiscovery {
   private readonly cache = new Map<string, NativeSessionSummary>();
 
@@ -280,10 +368,11 @@ export class SessionDiscovery {
     userDirectories: Record<AgentProvider, string>,
     limit: number
   ): Promise<NativeSessionSummary[]> {
-    const perProvider = Math.max(5, Math.ceil(limit / 2));
-    const [claudePaths, codexPaths] = await Promise.all([
+    const perProvider = Math.max(5, Math.ceil(limit / 3));
+    const [claudePaths, codexPaths, grokPaths] = await Promise.all([
       walkJsonl(path.join(userDirectories.claude, "projects"), perProvider),
-      walkJsonl(path.join(userDirectories.codex, "sessions"), perProvider)
+      walkJsonl(path.join(userDirectories.codex, "sessions"), perProvider),
+      walkGrokSummaries(path.join(userDirectories.grok, "sessions"), perProvider)
     ]);
     const summaries = (
       await Promise.all([
@@ -298,6 +387,14 @@ export class SessionDiscovery {
         ...codexPaths.map(async (filePath) => {
           try {
             return await summarizeCodex(filePath);
+          } catch (error) {
+            this.output.appendLine(`[discovery] ${filePath}: ${(error as Error).message}`);
+            return undefined;
+          }
+        }),
+        ...grokPaths.map(async (filePath) => {
+          try {
+            return await summarizeGrok(filePath);
           } catch (error) {
             this.output.appendLine(`[discovery] ${filePath}: ${(error as Error).message}`);
             return undefined;
@@ -325,9 +422,10 @@ export class SessionDiscovery {
     if (!summary) {
       throw new Error("The discovered session is no longer available. Refresh and try again.");
     }
-    const messages =
-      summary.provider === "claude"
-        ? await readClaudeHistory(summary.sourcePath)
+    const messages = summary.provider === "claude"
+      ? await readClaudeHistory(summary.sourcePath)
+      : summary.provider === "grok"
+        ? await readGrokHistory(summary.sourcePath)
         : await readCodexHistory(summary.sourcePath);
     const now = new Date().toISOString();
     return {

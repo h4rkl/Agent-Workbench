@@ -70,7 +70,8 @@ describe("workbench webview", () => {
           workspaces: [{ path: "/repo", name: "repo", active: true }],
           health: {
             claude: { provider: "claude", available: true, executable: "claude" },
-            codex: { provider: "codex", available: true, executable: "codex" }
+            codex: { provider: "codex", available: true, executable: "codex" },
+            grok: { provider: "grok", available: true, executable: "grok" }
           },
           changes: [],
           files: [{ name: "src", path: "src", type: "directory" }],
@@ -113,10 +114,10 @@ describe("workbench webview", () => {
             density: "comfortable",
             defaultProvider: "codex",
             defaultPermission: "workspace-write",
-            defaultModels: { claude: "", codex: "" },
+            defaultModels: { claude: "", codex: "", grok: "" },
             dataDirectory: "/data",
-            userDirectories: { claude: "/claude", codex: "/codex" },
-            executableSettings: { claude: "claude", codex: "codex" }
+            userDirectories: { claude: "/claude", codex: "/codex", grok: "/grok" },
+            executableSettings: { claude: "claude", codex: "codex", grok: "grok" }
           }
         }
       }
@@ -124,6 +125,7 @@ describe("workbench webview", () => {
 
     expect(app.innerHTML).toContain("New task");
     expect(app.innerHTML).toContain("Codex agent");
+    expect(app.innerHTML).toContain("Grok agent");
     expect(app.innerHTML).toContain('id="new-worktree-target"');
     expect(app.innerHTML).toContain("New worktree");
     expect(app.innerHTML).toContain('id="new-workspace"');

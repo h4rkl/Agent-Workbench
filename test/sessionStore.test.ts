@@ -18,10 +18,13 @@ function outputChannel(): OutputChannel {
   return { appendLine: vi.fn() } as unknown as OutputChannel;
 }
 
-function session(status: AgentSession["status"] = "idle"): AgentSession {
+function session(
+  status: AgentSession["status"] = "idle",
+  provider: AgentSession["provider"] = "codex"
+): AgentSession {
   return {
     id: "session-1",
-    provider: "codex",
+    provider,
     title: "Test session",
     workspace: "/tmp/project",
     model: "",
@@ -80,5 +83,14 @@ describe("SessionStore", () => {
     const root = await temporaryDirectory();
     const store = new SessionStore(path.join(root, "missing"), outputChannel());
     await expect(store.load()).resolves.toEqual({ version: 1, sessions: [] });
+  });
+
+  it("reloads Grok sessions", async () => {
+    const root = await temporaryDirectory();
+    const store = new SessionStore(path.join(root, "data"), outputChannel());
+    await store.save([session("idle", "grok")], "session-1");
+
+    const result = await store.load();
+    expect(result.sessions[0]?.provider).toBe("grok");
   });
 });

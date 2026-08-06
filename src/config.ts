@@ -38,7 +38,8 @@ export function getConfigSnapshot(): WorkbenchConfigSnapshot {
     defaultPermission,
     defaultModels: {
       claude: config.get<string>("claude.defaultModel", ""),
-      codex: config.get<string>("codex.defaultModel", "")
+      codex: config.get<string>("codex.defaultModel", ""),
+      grok: config.get<string>("grok.defaultModel", "")
     },
     dataDirectory: expandHome(
       config.get<string>("dataDirectory", "~/.vscode-agent")
@@ -47,11 +48,13 @@ export function getConfigSnapshot(): WorkbenchConfigSnapshot {
       claude: expandHome(
         config.get<string>("claude.userDirectory", "~/.claude")
       ),
-      codex: expandHome(config.get<string>("codex.userDirectory", "~/.codex"))
+      codex: expandHome(config.get<string>("codex.userDirectory", "~/.codex")),
+      grok: expandHome(config.get<string>("grok.userDirectory", "~/.grok"))
     },
     executableSettings: {
       claude: config.get<string>("claude.executable", "claude"),
-      codex: config.get<string>("codex.executable", "codex")
+      codex: config.get<string>("codex.executable", "codex"),
+      grok: config.get<string>("grok.executable", "grok")
     }
   };
 }

@@ -157,4 +157,47 @@ describe("AgentEventParser", () => {
       { type: "status", text: "warming up" }
     ]);
   });
+
+  it("normalizes Grok streaming text, reasoning, tools, usage, and session metadata", () => {
+    const parser = new AgentEventParser("grok");
+
+    expect(parser.parse(JSON.stringify({ type: "text", data: "Implemented" })))
+      .toEqual([{ type: "assistant-delta", text: "Implemented" }]);
+    expect(parser.parse(JSON.stringify({ type: "thought", data: "Checking tests" })))
+      .toEqual([{ type: "reasoning-delta", text: "Checking tests" }]);
+    expect(parser.parse(JSON.stringify({
+      type: "tool_call",
+      toolCallId: "tool-1",
+      title: "Run tests",
+      toolName: "run_terminal_cmd",
+      status: "in_progress",
+      rawInput: { command: "npm test" }
+    }))).toEqual([{
+      type: "tool",
+      id: "tool-1",
+      title: "Run tests",
+      content: '{\n  "command": "npm test"\n}',
+      state: "running"
+    }]);
+    expect(parser.parse(JSON.stringify({
+      type: "tool_call_update",
+      toolCallId: "tool-1",
+      status: "completed",
+      rawOutput: { exitCode: 0 }
+    }))).toEqual([{
+      type: "tool",
+      id: "tool-1",
+      title: "Run tests",
+      content: '{\n  "exitCode": 0\n}',
+      state: "completed"
+    }]);
+    expect(parser.parse(JSON.stringify({
+      type: "end",
+      sessionId: "grok-session",
+      usage: { input_tokens: 30, output_tokens: 8 }
+    }))).toEqual([
+      { type: "native-session", sessionId: "grok-session" },
+      { type: "usage", usage: { input_tokens: 30, output_tokens: 8 } }
+    ]);
+  });
 });

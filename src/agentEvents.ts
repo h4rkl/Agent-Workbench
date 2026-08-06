@@ -136,9 +136,18 @@ function codexToolEvent(
   return undefined;
 }
 
+function grokToolState(value: unknown, fallback: AgentEvent & { type: "tool" }): "running" | "completed" | "failed" {
+  return value === "failed" || value === "error"
+    ? "failed"
+    : value === "completed"
+      ? "completed"
+      : fallback.state;
+}
+
 export class AgentEventParser {
   private sawClaudeTextDelta = false;
   private emittedClaudeText = false;
+  private readonly grokTools = new Map<string, AgentEvent & { type: "tool" }>();
 
   public constructor(private readonly provider: AgentProvider) {}
 
@@ -161,7 +170,9 @@ export class AgentEventParser {
 
     return this.provider === "claude"
       ? this.parseClaude(event)
-      : this.parseCodex(event);
+      : this.provider === "grok"
+        ? this.parseGrok(event)
+        : this.parseCodex(event);
   }
 
   private parseClaude(event: JsonRecord): AgentEvent[] {
@@ -283,6 +294,81 @@ export class AgentEventParser {
       return tool ? [tool] : [];
     }
 
+    return [];
+  }
+
+  private parseGrok(event: JsonRecord): AgentEvent[] {
+    const type = stringValue(event.type) ?? "";
+    if (type === "text") {
+      const text = stringValue(event.data);
+      return text ? [{ type: "assistant-delta", text }] : [];
+    }
+    if (type === "thought") {
+      const text = stringValue(event.data);
+      return text ? [{ type: "reasoning-delta", text }] : [];
+    }
+    if (type === "tool_call") {
+      const id = stringValue(event.toolCallId) ?? "grok-tool";
+      const tool: AgentEvent & { type: "tool" } = {
+        type: "tool",
+        id,
+        title: stringValue(event.title) ?? stringValue(event.toolName) ?? "Tool",
+        content: renderUnknown(event.rawInput ?? event.content ?? {}),
+        state: "running"
+      };
+      tool.state = grokToolState(event.status, tool);
+      this.grokTools.set(id, tool);
+      return [tool];
+    }
+    if (type === "tool_call_update") {
+      const id = stringValue(event.toolCallId) ?? "grok-tool";
+      const previous = this.grokTools.get(id) ?? {
+        type: "tool" as const,
+        id,
+        title: stringValue(event.title) ?? "Tool",
+        content: "",
+        state: "running" as const
+      };
+      const tool: AgentEvent & { type: "tool" } = {
+        ...previous,
+        title: stringValue(event.title) ?? previous.title,
+        content: renderUnknown(event.rawOutput ?? event.content ?? previous.content),
+        state: grokToolState(event.status, previous)
+      };
+      this.grokTools.set(id, tool);
+      return [tool];
+    }
+    if (type === "usage") {
+      const usage = recordValue(event.usage);
+      return usage ? [{ type: "usage", usage }] : [];
+    }
+    if (type === "plan") {
+      return [{
+        type: "tool",
+        id: "grok-plan",
+        title: "Plan",
+        content: renderUnknown(event.entries ?? []),
+        state: "completed"
+      }];
+    }
+    if (type === "end") {
+      const events: AgentEvent[] = [];
+      const sessionId = stringValue(event.sessionId);
+      if (sessionId) {
+        events.push({ type: "native-session", sessionId });
+      }
+      const usage = recordValue(event.usage);
+      if (usage) {
+        events.push({ type: "usage", usage });
+      }
+      return events;
+    }
+    if (type === "error") {
+      return [{ type: "error", message: stringValue(event.message) ?? "Grok run failed" }];
+    }
+    if (type === "max_turns_reached") {
+      return [{ type: "status", text: "Grok reached the maximum number of turns" }];
+    }
     return [];
   }
 }

@@ -1,4 +1,4 @@
-export type AgentProvider = "claude" | "codex";
+export type AgentProvider = "claude" | "codex" | "grok";
 
 export type PermissionMode =
   | "plan"

@@ -16,7 +16,7 @@ function isAgentSession(value: unknown): value is AgentSession {
   const candidate = value as Partial<AgentSession>;
   return (
     typeof candidate.id === "string" &&
-    (candidate.provider === "claude" || candidate.provider === "codex") &&
+    (candidate.provider === "claude" || candidate.provider === "codex" || candidate.provider === "grok") &&
     typeof candidate.workspace === "string" &&
     typeof candidate.title === "string" &&
     Array.isArray(candidate.messages)

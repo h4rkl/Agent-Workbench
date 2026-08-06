@@ -1,9 +1,10 @@
 # Local Agent Workbench
 
-A Copilot-free VS Code workbench for running your installed **Claude Code** and
-**OpenAI Codex CLI** agents. It presents an Agents-style, full-editor interface
-while launching the real local CLIs with their existing user directories,
-credentials, configuration, rules, skills, and session history.
+A Copilot-free VS Code workbench for running your installed **Claude Code**,
+**OpenAI Codex CLI**, and **Grok Build** agents. It presents an Agents-style,
+full-editor interface while launching the real local CLIs with their existing
+user directories, credentials, configuration, rules, skills, and session
+history.
 
 The extension does not sign in to GitHub Copilot and does not proxy prompts
 through a VS Code chat provider.
@@ -18,9 +19,11 @@ through a VS Code chat provider.
   commit file inspection in one view, with native-style Codicon diff markers
 - Resizable side panes, compact/comfortable density, and a configurable accent
   color
-- Direct adapters for `claude` stream JSON and `codex exec --json`
-- New and resumed sessions for either provider
-- Import from `~/.claude/projects` and `~/.codex/sessions`, or custom user dirs
+- Direct adapters for Claude stream JSON, `codex exec --json`, and Grok
+  `streaming-json`
+- New and resumed sessions for all three providers
+- Import from `~/.claude/projects`, `~/.codex/sessions`, and `~/.grok/sessions`,
+  or custom user dirs
 - Model and permission selection per session
 - Live response streaming, tool cards, cancellation, CLI health, and raw logs
 - Git status with click-to-open diffs, lazy workspace browsing, and an
@@ -43,11 +46,12 @@ through a VS Code chat provider.
 ```bash
 claude --version
 codex --version
+grok --version
 ```
 
-Authentication stays owned by each CLI. Complete `claude` and/or `codex login`
-in a terminal before starting a workbench session if the relevant CLI is not
-already authenticated.
+Authentication stays owned by each CLI. Complete `claude`, `codex`, or
+`grok login` in a terminal before starting a workbench session if the relevant
+CLI is not already authenticated.
 
 ## Build and install
 
@@ -104,9 +108,9 @@ Development Host after changing the workbench JavaScript or CSS.
 1. Click **Local Agents** in the status bar, use the sparkle button in the
    editor title, or run **Local Agents: Toggle Workbench**.
 2. Choose **New task** and use the **New [agent] in [worktree]** controls to
-   select Claude or Codex and either an existing worktree or a new one. Choose
-   the current branch, an available existing branch, or a new branch from any
-   local base. Blank branch names become `agent/<task>-<timestamp>` names.
+   select Claude, Codex, or Grok and either an existing worktree or a new one.
+   Choose the current branch, an available existing branch, or a new branch
+   from any local base. Blank branch names become `agent/<task>-<timestamp>` names.
    New worktrees live in a sibling `<repository>-worktrees` directory.
    **Commit result** asks the agent to verify and commit its intended changes.
 3. Launch additional agents the same way. The left pane shows every worktree,
@@ -137,6 +141,9 @@ Open Settings and search for `Local Agent Workbench`.
 | `localAgentWorkbench.codex.executable`      | `codex`           | Executable name or absolute path                  |
 | `localAgentWorkbench.codex.userDirectory`   | `~/.codex`        | `CODEX_HOME`, including auth, config, and history |
 | `localAgentWorkbench.codex.defaultModel`    | empty             | Model passed to Codex                             |
+| `localAgentWorkbench.grok.executable`       | `grok`            | Grok Build executable name or absolute path       |
+| `localAgentWorkbench.grok.userDirectory`    | `~/.grok`         | `GROK_HOME`, including auth, config, and history  |
+| `localAgentWorkbench.grok.defaultModel`     | empty             | Model or alias passed to Grok Build               |
 | `localAgentWorkbench.dataDirectory`         | `~/.vscode-agent` | Workbench metadata location                       |
 | `localAgentWorkbench.defaultProvider`       | `claude`          | Provider preselected for new sessions             |
 | `localAgentWorkbench.defaultPermission`     | `workspace-write` | Initial access boundary                           |
@@ -146,7 +153,8 @@ Open Settings and search for `Local Agent Workbench`.
 | `localAgentWorkbench.discovery.maxSessions` | `200`             | Maximum native sessions to scan                   |
 
 Paths beginning with `~` are expanded. Executables are resolved from `PATH`
-plus common local macOS locations, including NVM installations.
+plus common local macOS locations, including `~/.grok/bin` and NVM
+installations.
 
 ### Using separate user directories
 
@@ -155,25 +163,29 @@ To use a non-default profile, point the relevant setting at it:
 ```json
 {
   "localAgentWorkbench.claude.userDirectory": "~/.claude-work",
-  "localAgentWorkbench.codex.userDirectory": "~/.codex-work"
+  "localAgentWorkbench.codex.userDirectory": "~/.codex-work",
+  "localAgentWorkbench.grok.userDirectory": "~/.grok-work"
 }
 ```
 
 The extension starts Claude with `CLAUDE_CONFIG_DIR` and Codex with
-`CODEX_HOME`, so each provider loads that profile directly.
+`CODEX_HOME`, and Grok with `GROK_HOME`, so each provider loads that profile
+directly.
 
 ## Permission behavior
 
-| Workbench mode | Codex                          | Claude Code                                           |
-| -------------- | ------------------------------ | ----------------------------------------------------- |
-| Plan           | Read-only Codex sandbox        | `plan` permission mode                                |
-| Read only      | Read-only Codex sandbox        | `dontAsk`, with edit/write/notebook/Bash tools denied |
-| Workspace      | Workspace-write Codex sandbox  | `acceptEdits` permission mode                         |
-| Unrestricted   | Bypasses approvals and sandbox | Skips permission checks                               |
+| Workbench mode | Codex                          | Claude Code                                           | Grok Build                              |
+| -------------- | ------------------------------ | ----------------------------------------------------- | --------------------------------------- |
+| Plan           | Read-only Codex sandbox        | `plan` permission mode                                | `plan` with read-only sandbox           |
+| Read only      | Read-only Codex sandbox        | `dontAsk`, with edit/write/notebook/Bash tools denied | `dontAsk` with read-only sandbox        |
+| Workspace      | Workspace-write Codex sandbox  | `acceptEdits` permission mode                         | Auto-approve with workspace sandbox     |
+| Unrestricted   | Bypasses approvals and sandbox | Skips permission checks                               | Auto-approve with sandbox disabled      |
 
 Claude Code does not expose a Codex-equivalent filesystem sandbox. Its
 `acceptEdits` boundary is therefore governed by Claude's permission system and
 your Claude settings; treat it differently from Codex's OS sandbox.
+Grok locks its sandbox profile for the life of a native session, so resumed
+sessions restore the profile selected when they were created.
 Unrestricted access is intentionally guarded by a modal confirmation per workspace.
 
 The extension also asks you to trust a workspace before its first agent run.
@@ -182,7 +194,7 @@ The extension also asks you to trust a workspace before its first agent run.
 
 - Workbench session metadata is stored in
   `~/.vscode-agent/sessions.json` by default.
-- Native Claude and Codex transcripts remain in their provider-owned user
+- Native Claude, Codex, and Grok transcripts remain in their provider-owned user
   directories. Removing a session from the workbench does not delete them.
 - Prompts and output pass between the webview, the extension host, and the local
   CLI process. The extension itself has no telemetry or network client.
@@ -200,11 +212,12 @@ Custom editor webview
   ├─ workspace files, changes, and editor-selection context
   └─ VS Code message bridge
        ├─ local metadata store (~/.vscode-agent)
-       ├─ native history discovery (~/.claude, ~/.codex)
+       ├─ native history discovery (~/.claude, ~/.codex, ~/.grok)
        ├─ Git worktree/status/history integration
        └─ child process adapter
             ├─ claude --print --output-format stream-json
-            └─ codex exec --json
+            ├─ codex exec --json
+            └─ grok --prompt-file … --output-format streaming-json
 ```
 
 No shell is used to launch provider processes; arguments are passed directly to
@@ -224,5 +237,5 @@ a fixture to `test/agentEvents.test.ts` before updating the parser.
 
 ## License
 
-Apache License 2.0. This project is independent of Microsoft, Anthropic, and OpenAI. Product
-names belong to their respective owners.
+Apache License 2.0. This project is independent of Microsoft, Anthropic, OpenAI,
+and xAI. Product names belong to their respective owners.

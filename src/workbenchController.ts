@@ -92,7 +92,13 @@ function stringField(message: WebviewMessage, key: string): string | undefined {
 }
 
 function providerField(value: unknown): AgentProvider | undefined {
-  return value === "claude" || value === "codex" ? value : undefined;
+  return value === "claude" || value === "codex" || value === "grok"
+    ? value
+    : undefined;
+}
+
+function providerName(provider: AgentProvider): string {
+  return provider === "claude" ? "Claude" : provider === "codex" ? "Codex" : "Grok";
 }
 
 function permissionField(value: unknown): PermissionMode | undefined {
@@ -166,6 +172,11 @@ export class WorkbenchController implements vscode.Disposable {
       provider: "codex",
       available: false,
       executable: this.config.executableSettings.codex
+    },
+    grok: {
+      provider: "grok",
+      available: false,
+      executable: this.config.executableSettings.grok
     }
   };
   private readonly activeRuns = new Map<string, ActiveRun>();
@@ -343,7 +354,7 @@ export class WorkbenchController implements vscode.Disposable {
 
   public async checkHealth(showNotification = false): Promise<void> {
     const results = await Promise.all(
-      (["claude", "codex"] as const).map(async (provider) => {
+      (["claude", "codex", "grok"] as const).map(async (provider) => {
         const configured = this.config.executableSettings[provider];
         try {
           const executable = await resolveExecutable(configured);
@@ -367,7 +378,7 @@ export class WorkbenchController implements vscode.Disposable {
         }
       })
     );
-    this.health = { claude: results[0]!, codex: results[1]! };
+    this.health = { claude: results[0]!, codex: results[1]!, grok: results[2]! };
     if (showNotification) {
       const summary = results
         .map((item) =>
@@ -566,7 +577,7 @@ export class WorkbenchController implements vscode.Disposable {
     const session: AgentSession = {
       id: randomUUID(),
       provider,
-      title: requestedTitle || `New ${provider === "claude" ? "Claude" : "Codex"} session`,
+      title: requestedTitle || `New ${providerName(provider)} session`,
       workspace,
       model,
       permission,
@@ -624,7 +635,7 @@ export class WorkbenchController implements vscode.Disposable {
     };
     session.messages.push(userMessage, assistantMessage);
     session.status = "running";
-    session.statusText = `${session.provider === "claude" ? "Claude" : "Codex"} is starting`;
+    session.statusText = `${providerName(session.provider)} is starting`;
     session.updatedAt = timestamp;
     await this.queueSave();
     await this.postSession(session);
@@ -821,7 +832,7 @@ export class WorkbenchController implements vscode.Disposable {
       return;
     }
     const choice = await vscode.window.showWarningMessage(
-      `Delete '${session.title}' from Local Agent Workbench? Native Claude/Codex transcripts are not deleted.`,
+      `Delete '${session.title}' from Local Agent Workbench? Native provider transcripts are not deleted.`,
       { modal: true },
       "Delete"
     );
@@ -1313,7 +1324,11 @@ export class WorkbenchController implements vscode.Disposable {
     if (!key) {
       return;
     }
-    const provider = key.startsWith("codex:") ? "codex" : "claude";
+    const provider = key.startsWith("codex:")
+      ? "codex"
+      : key.startsWith("grok:")
+        ? "grok"
+        : "claude";
     const session = await this.discovery.import(
       key,
       this.config.defaultPermission,
@@ -1332,7 +1347,7 @@ export class WorkbenchController implements vscode.Disposable {
       return;
     }
     const selected = await vscode.window.showWarningMessage(
-      `${session.provider === "claude" ? "Claude Code" : "Codex"} will run locally with access to ${session.workspace}. Only continue if you trust this folder and its instructions.`,
+      `${providerName(session.provider)} will run locally with access to ${session.workspace}. Only continue if you trust this folder and its instructions.`,
       { modal: true },
       "Trust and Run"
     );

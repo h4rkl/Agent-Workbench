@@ -1,7 +1,7 @@
 {
   "name": "local-agent-workbench",
   "displayName": "Local Agent Workbench",
-  "description": "A Copilot-free, Agents-style workbench for local Claude Code and OpenAI Codex CLI sessions.",
+  "description": "A Copilot-free, Agents-style workbench for local Claude Code, OpenAI Codex CLI, and Grok Build sessions.",
   "version": "0.1.0",
   "publisher": "local-agent-workbench",
   "license": "Apache-2.0",
@@ -16,6 +16,8 @@
   "keywords": [
     "claude-code",
     "codex",
+    "grok",
+    "grok-build",
     "agents",
     "local",
     "copilot-free"
@@ -132,15 +134,34 @@
           "default": "",
           "description": "Default Codex model. Leave empty to use the active Codex configuration."
         },
+        "localAgentWorkbench.grok.executable": {
+          "type": "string",
+          "default": "grok",
+          "scope": "machine",
+          "description": "Grok Build CLI executable name or absolute path."
+        },
+        "localAgentWorkbench.grok.userDirectory": {
+          "type": "string",
+          "default": "~/.grok",
+          "scope": "machine",
+          "description": "Grok home used for authentication, config, skills, and session discovery."
+        },
+        "localAgentWorkbench.grok.defaultModel": {
+          "type": "string",
+          "default": "",
+          "description": "Default Grok model or alias. Leave empty to use Grok Build configuration."
+        },
         "localAgentWorkbench.defaultProvider": {
           "type": "string",
           "enum": [
             "claude",
-            "codex"
+            "codex",
+            "grok"
           ],
           "enumDescriptions": [
             "Claude Code",
-            "OpenAI Codex CLI"
+            "OpenAI Codex CLI",
+            "Grok Build CLI"
           ],
           "default": "claude",
           "description": "Provider selected for new sessions."
@@ -186,7 +207,7 @@
           "default": 200,
           "minimum": 10,
           "maximum": 1000,
-          "description": "Maximum number of native Claude and Codex sessions scanned from the user directories."
+          "description": "Maximum number of native provider sessions scanned from the configured user directories."
         }
       }
     }

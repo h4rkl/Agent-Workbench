@@ -43,6 +43,7 @@ export async function resolveExecutable(configured: string): Promise<string> {
     .map((directory) => path.join(directory, expanded));
 
   const commonCandidates = [
+    path.join(os.homedir(), ".grok", "bin", expanded),
     path.join(os.homedir(), ".local", "bin", expanded),
     path.join(os.homedir(), "bin", expanded),
     path.join("/opt/homebrew/bin", expanded),
