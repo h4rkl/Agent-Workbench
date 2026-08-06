@@ -62,11 +62,22 @@ export function grokPermissionArgs(
   return ["--permission-mode", "dontAsk", ...sandbox("read-only")];
 }
 
-function buildCodexArgs(request: RunRequest): string[] {
+export function buildCodexArgs(request: RunRequest): string[] {
   const { session } = request;
   const common = ["--json", ...codexPermissionArgs(session.permission)];
+  const nativeImageTypes = new Set([
+    "image/gif",
+    "image/jpeg",
+    "image/png",
+    "image/webp"
+  ]);
   if (session.model) {
     common.push("--model", session.model);
+  }
+  for (const attachment of request.attachments ?? []) {
+    if (nativeImageTypes.has(attachment.mimeType.toLowerCase())) {
+      common.push("--image", attachment.path);
+    }
   }
 
   if (session.nativeSessionId) {

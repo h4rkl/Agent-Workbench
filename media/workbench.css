@@ -257,6 +257,17 @@ body.resizing { cursor: col-resize; user-select: none; }
 .composer-mode { height: 27px; padding: 0 6px; display: inline-flex; align-items: center; gap: 6px; border-radius: 5px; color: color-mix(in srgb, var(--vscode-foreground) 78%, var(--muted)); font-size: 11px; }
 .composer-mode:hover { background: var(--hover-bg); }
 .composer-mode .icon { width: 14px; }
+.composer-drop-target { position: relative; transition: border-color .12s ease, background-color .12s ease; }
+.composer-drop-target.drag-active { background: color-mix(in srgb, var(--agent-accent) 10%, var(--vscode-input-background)); }
+.composer-drop-target.drag-active::after { content: "Drop files or images here"; position: absolute; z-index: 4; inset: 6px; display: grid; place-items: center; border: 1px dashed color-mix(in srgb, var(--agent-accent) 72%, var(--vscode-focusBorder)); border-radius: 6px; background: color-mix(in srgb, var(--vscode-input-background) 88%, transparent); color: var(--vscode-foreground); font-size: 12px; font-weight: 600; pointer-events: none; }
+.attachment-list { padding: 8px 2px 0; display: flex; flex-wrap: wrap; gap: 5px; }
+.attachment-chip { min-width: 0; max-width: 270px; height: 25px; padding: 0 6px; display: inline-flex; align-items: center; gap: 5px; border: 1px solid var(--hairline); border-radius: 5px; background: var(--raised-bg); color: var(--vscode-foreground); font-size: 10px; }
+.attachment-chip > .icon { flex: 0 0 auto; width: 13px; color: var(--muted); }
+.attachment-chip > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.attachment-chip small { flex: 0 0 auto; color: var(--muted); font-size: 9px; }
+.attachment-chip button { width: 17px; height: 17px; margin-left: 1px; padding: 0; display: grid; place-items: center; border-radius: 3px; background: transparent; color: var(--muted); cursor: pointer; }
+.attachment-chip button:hover { background: var(--hover-bg); color: var(--vscode-foreground); }
+.attachment-chip button .icon { width: 11px; }
 .model-control input { width: 54px; border: 0; outline: 0; background: transparent; }
 .model-control input::placeholder { color: inherit; }
 .submit-arrow { width: 29px; height: 29px; padding: 0; display: grid; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--vscode-foreground) 24%, transparent); color: var(--vscode-editor-background); cursor: pointer; }
@@ -420,6 +431,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .conversation-composer textarea { width: 100%; min-height: 47px; max-height: 220px; padding: 11px 3px 3px; resize: none; border: 0; outline: 0; background: transparent; }
 .conversation-composer > div:last-child { min-height: 31px; display: flex; align-items: center; gap: 8px; }
 .conversation-composer .context-chip { margin-top: 7px; }
+.conversation-composer .attachment-list { padding-top: 7px; }
+.message-body .attachment-list { margin-top: 9px; padding: 0; }
 .composer-branch { min-width: 0; display: flex; align-items: center; gap: 4px; overflow: hidden; color: var(--muted); font-size: 10px; white-space: nowrap; text-overflow: ellipsis; }
 .composer-branch .icon { width: 12px; }
 .permission-badge { margin-right: auto; padding: 1px 6px; border-radius: 7px; background: var(--hover-bg); color: var(--muted); font-size: 9px; }

@@ -18,6 +18,12 @@ describe("workbench webview", () => {
       addEventListener: (type: string, handler: (event: Record<string, unknown>) => void) => showHistoryHandlers.set(type, handler)
     };
     const worktreeRowHandlers = new Map<string, (event: Record<string, unknown>) => void>();
+    const dropHandlers = new Map<string, (event: Record<string, unknown>) => void>();
+    const dropTarget = {
+      classList: { add: vi.fn(), remove: vi.fn() },
+      contains: () => false,
+      addEventListener: (type: string, handler: (event: Record<string, unknown>) => void) => dropHandlers.set(type, handler)
+    };
     const worktreeRow = {
       dataset: { path: "/repo-worktrees/codex-feature" },
       addEventListener: (type: string, handler: (event: Record<string, unknown>) => void) => worktreeRowHandlers.set(type, handler),
@@ -30,6 +36,7 @@ describe("workbench webview", () => {
       querySelectorAll: (selector: string) => {
         if (selector === "[data-action]") return [showHistoryButton];
         if (selector === ".worktree-row") return [worktreeRow];
+        if (selector === "[data-file-drop]") return [dropTarget];
         return [];
       }
     };
@@ -135,12 +142,29 @@ describe("workbench webview", () => {
     expect(app.innerHTML).toContain('id="new-branch-name"');
     expect(app.innerHTML).toContain('id="unrestricted-access"');
     expect(app.innerHTML).toContain("Unrestricted");
+    expect(app.innerHTML).toContain('data-file-drop="true"');
+    expect(app.innerHTML).toContain("Drag files or images into the prompt");
     expect(app.innerHTML).toContain("Existing · stable");
     expect(app.innerHTML).toContain("already in a worktree");
     expect(app.innerHTML).toContain("Repository history");
     expect(app.innerHTML).toContain("repo");
     expect(app.innerHTML).toContain("codicon-folder");
     expect(script).toContain('icon: "diff-modified"');
+    expect(script).toContain('transfer.getData("text/uri-list")');
+    expect(script).toContain("file.arrayBuffer()");
+
+    const preventDropDefault = vi.fn();
+    dropHandlers.get("drop")?.({
+      preventDefault: preventDropDefault,
+      dataTransfer: {
+        types: ["text/uri-list"],
+        files: [],
+        getData: () => "file:///tmp/reference-screen.png"
+      }
+    });
+    expect(preventDropDefault).toHaveBeenCalled();
+    expect(app.innerHTML).toContain("reference-screen.png");
+    expect(app.innerHTML).toContain("attachment-chip");
 
     handlers.get("message")?.({
       data: {

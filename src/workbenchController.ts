@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
 import { AgentRunner } from "./agentRunner";
+import { appendAttachmentContext, prepareAttachments } from "./attachments";
 import {
   getConfigSnapshot,
   getMaxDiscoveredSessions,
@@ -592,7 +593,12 @@ export class WorkbenchController implements vscode.Disposable {
     await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
     await this.postSnapshot();
     if (prompt) {
-      await this.sendPrompt({ type: "sendPrompt", sessionId: session.id, prompt });
+      await this.sendPrompt({
+        type: "sendPrompt",
+        sessionId: session.id,
+        prompt,
+        attachments: message.attachments
+      });
     }
   }
 
@@ -616,6 +622,15 @@ export class WorkbenchController implements vscode.Disposable {
     const executable = await resolveExecutable(
       this.config.executableSettings[session.provider]
     );
+    const preparedAttachments = await prepareAttachments(
+      session.workspace,
+      message.attachments
+    );
+    const runnerPrompt = appendAttachmentContext(
+      prompt,
+      session.workspace,
+      preparedAttachments.attachments
+    );
     const timestamp = now();
     if (session.messages.length === 0 || session.title.startsWith("New ")) {
       session.title = sessionTitle(prompt);
@@ -624,7 +639,16 @@ export class WorkbenchController implements vscode.Disposable {
       id: randomUUID(),
       role: "user",
       content: prompt,
-      createdAt: timestamp
+      createdAt: timestamp,
+      metadata: preparedAttachments.attachments.length > 0
+        ? {
+            attachments: preparedAttachments.attachments.map((attachment) => ({
+              name: attachment.name,
+              mimeType: attachment.mimeType,
+              size: attachment.size
+            }))
+          }
+        : undefined
     };
     const assistantMessage: AgentMessage = {
       id: randomUUID(),
@@ -637,8 +661,13 @@ export class WorkbenchController implements vscode.Disposable {
     session.status = "running";
     session.statusText = `${providerName(session.provider)} is starting`;
     session.updatedAt = timestamp;
-    await this.queueSave();
-    await this.postSession(session);
+    try {
+      await this.queueSave();
+      await this.postSession(session);
+    } catch (error) {
+      await preparedAttachments.cleanup();
+      throw error;
+    }
 
     const runId = randomUUID();
     const activeRun: ActiveRun = {
@@ -647,19 +676,26 @@ export class WorkbenchController implements vscode.Disposable {
       runId,
       hadError: false
     };
-    const running = this.agentRunner.run(
-      {
-        session,
-        prompt,
-        executable,
-        userDirectory: this.config.userDirectories[session.provider]
-      },
-      (event) => this.handleAgentEvent(session, activeRun, event)
-    );
+    let running: RunningAgent;
+    try {
+      running = this.agentRunner.run(
+        {
+          session,
+          prompt: runnerPrompt,
+          attachments: preparedAttachments.attachments,
+          executable,
+          userDirectory: this.config.userDirectories[session.provider]
+        },
+        (event) => this.handleAgentEvent(session, activeRun, event)
+      );
+    } catch (error) {
+      await preparedAttachments.cleanup();
+      throw error;
+    }
     activeRun.running = running;
     this.activeRuns.set(session.id, activeRun);
 
-    const outcome = await running.done;
+    const outcome = await running.done.finally(() => preparedAttachments.cleanup());
     this.activeRuns.delete(session.id);
     if (outcome.nativeSessionId) {
       session.nativeSessionId = outcome.nativeSessionId;
@@ -1266,7 +1302,10 @@ export class WorkbenchController implements vscode.Disposable {
     }
     const entries = await readdir(target, { withFileTypes: true });
     return entries
-      .filter((entry) => entry.name !== ".git")
+      .filter((entry) =>
+        entry.name !== ".git" &&
+        !entry.name.startsWith(".local-agent-workbench-attachments-")
+      )
       .map((entry) => {
         const entryPath = path
           .relative(root, path.join(target, entry.name))

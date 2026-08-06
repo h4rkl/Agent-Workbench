@@ -30,6 +30,7 @@
     importLoading: false,
     startingSession: false,
     editorContext: null,
+    attachments: [],
     fileQuery: "",
     fileSearchOpen: false,
     directories: new Map(),
@@ -258,6 +259,148 @@
     return '<div class="context-chip" title="' + attr(context.path) + '">' + icon("file") + '<span>' + escapeHtml(basename(context.path)) + ":" + context.startLine + (context.endLine !== context.startLine ? "–" + context.endLine : "") + '</span><button data-action="clearContext" title="Remove context">' + icon("close") + "</button></div>";
   }
 
+  const MAX_ATTACHMENT_COUNT = 10;
+  const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+  const MAX_TOTAL_ATTACHMENT_BYTES = 50 * 1024 * 1024;
+
+  function formatBytes(value) {
+    const size = Number(value) || 0;
+    if (size < 1024) return size ? size + " B" : "";
+    if (size < 1024 * 1024) return Math.round(size / 1024) + " KB";
+    return (size / (1024 * 1024)).toFixed(size < 10 * 1024 * 1024 ? 1 : 0) + " MB";
+  }
+
+  function attachmentMarkup(attachments, removable) {
+    if (!attachments || !attachments.length) return "";
+    return '<div class="attachment-list" aria-label="Attached files">' + attachments.map((attachment) => {
+      const image = String(attachment.mimeType || "").startsWith("image/");
+      const size = formatBytes(attachment.size);
+      return '<span class="attachment-chip" title="' + attr(attachment.name) + '">' + codicon(image ? "file-media" : "file", image ? "Image" : "File", "icon") + '<span>' + escapeHtml(attachment.name) + '</span>' + (size ? '<small>' + escapeHtml(size) + '</small>' : "") + (removable ? '<button data-action="removeAttachment" data-attachment-id="' + attr(attachment.id) + '" title="Remove attachment">' + icon("close") + "</button>" : "") + "</span>";
+    }).join("") + "</div>";
+  }
+
+  function composerAttachments() {
+    return attachmentMarkup(state.attachments, true);
+  }
+
+  function messageAttachments(message) {
+    const attachments = message && message.metadata && Array.isArray(message.metadata.attachments)
+      ? message.metadata.attachments
+      : [];
+    return attachmentMarkup(attachments, false);
+  }
+
+  function hasComposerInput() {
+    return Boolean(state.newDraft.trim() || state.attachments.length);
+  }
+
+  function attachmentPrompt() {
+    return state.newDraft.trim() || "Please review the attached file or image.";
+  }
+
+  function attachmentId() {
+    return Date.now().toString(36) + "-" + Math.random().toString(36).slice(2);
+  }
+
+  function filenameFromUri(uri) {
+    try {
+      const url = new URL(uri);
+      return decodeURIComponent(url.pathname.split("/").filter(Boolean).pop() || "attachment");
+    } catch {
+      return "attachment";
+    }
+  }
+
+  function inferMimeType(name, provided) {
+    if (provided) return provided;
+    const extension = String(name || "").toLowerCase().split(".").pop();
+    const images = { avif: "image/avif", bmp: "image/bmp", gif: "image/gif", ico: "image/x-icon", jpeg: "image/jpeg", jpg: "image/jpeg", png: "image/png", svg: "image/svg+xml", webp: "image/webp" };
+    return images[extension] || "application/octet-stream";
+  }
+
+  function bufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const parts = [];
+    const chunkSize = 32 * 1024;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+      parts.push(String.fromCharCode(...bytes.subarray(index, index + chunkSize)));
+    }
+    return btoa(parts.join(""));
+  }
+
+  async function attachmentFromFile(file) {
+    if (file.size > MAX_ATTACHMENT_BYTES) {
+      throw new Error(file.name + " exceeds the 20 MB limit.");
+    }
+    const common = {
+      id: attachmentId(),
+      name: file.name || "attachment",
+      mimeType: inferMimeType(file.name, file.type),
+      size: file.size || 0
+    };
+    if (typeof file.path === "string" && file.path) {
+      return Object.assign(common, { sourcePath: file.path });
+    }
+    return Object.assign(common, { data: bufferToBase64(await file.arrayBuffer()) });
+  }
+
+  function uriAttachments(value) {
+    return String(value || "").split(/\r?\n/).map((line) => line.trim()).filter((line) => {
+      if (!line || line.startsWith("#")) return false;
+      try { return new URL(line).protocol === "file:"; } catch { return false; }
+    }).map((uri) => {
+      const name = filenameFromUri(uri);
+      return {
+        id: attachmentId(),
+        name,
+        mimeType: inferMimeType(name, ""),
+        size: 0,
+        uri
+      };
+    });
+  }
+
+  function addAttachments(items) {
+    const existing = new Set(state.attachments.map((item) => item.uri || item.sourcePath || item.name + ":" + item.size));
+    const additions = items.filter((item) => {
+      const key = item.uri || item.sourcePath || item.name + ":" + item.size;
+      if (existing.has(key)) return false;
+      existing.add(key);
+      return true;
+    });
+    if (state.attachments.length + additions.length > MAX_ATTACHMENT_COUNT) {
+      showToast("Attach at most 10 files at a time.", "error");
+      return;
+    }
+    const total = [...state.attachments, ...additions].reduce((sum, item) => sum + (Number(item.size) || 0), 0);
+    if (total > MAX_TOTAL_ATTACHMENT_BYTES) {
+      showToast("Attachments exceed the 50 MB total limit.", "error");
+      return;
+    }
+    if (!additions.length) return;
+    state.attachments.push(...additions);
+    render({ preserveFocus: true });
+  }
+
+  function transferContainsFiles(transfer) {
+    if (!transfer) return false;
+    const types = Array.from(transfer.types || []);
+    return Boolean(transfer.files && transfer.files.length) || types.includes("Files") || types.includes("text/uri-list");
+  }
+
+  async function handleAttachmentDrop(transfer) {
+    const uris = uriAttachments(transfer.getData("text/uri-list"));
+    if (uris.length) {
+      addAttachments(uris);
+      return;
+    }
+    const results = await Promise.allSettled(Array.from(transfer.files || []).map(attachmentFromFile));
+    const items = results.filter((result) => result.status === "fulfilled").map((result) => result.value);
+    const failure = results.find((result) => result.status === "rejected");
+    if (items.length) addAttachments(items);
+    if (failure) showToast(failure.reason instanceof Error ? failure.reason.message : "A dropped file could not be attached.", "error");
+  }
+
   function workspaceOptions(current) {
     const entries = new Map();
     (state.snapshot.worktrees || []).forEach((item) => entries.set(item.path, { path: item.path, name: item.branch }));
@@ -341,14 +484,14 @@
     const repositoryField = state.newWorktree ? '<label><span>Repository</span><span class="branch-select repository-select"><select id="new-workspace">' + workspaceOptions(workspace) + '</select>' + icon("chevron") + "</span></label>" : "";
     const branchSetup = '<div class="branch-setup"><span class="branch-setup-title">' + codicon("git-branch", "Branch", "icon") + '<strong>Start</strong></span>' + repositoryField + '<label class="branch-target"><span>Branch</span><span class="branch-select"><select id="new-branch-target">' + branchTargetOptions(currentWorktree, baseBranch) + '</select>' + icon("chevron") + '</span></label>' + branchFields + '</div><p class="new-session-note">' + escapeHtml(summary) + (state.newBranch ? " Leave the name blank to generate one from the task." : "") + "</p>";
     return '<main class="center-pane new-session-view"><div class="corner-agent">' + icon("agent") + '</div><section class="new-session-card"><div class="new-session-title">New <label class="inline-select provider-select">' + providerLogo(provider) + '<select id="new-provider"><option value="codex" ' + selected(provider, "codex") + '>Codex agent</option><option value="claude" ' + selected(provider, "claude") + '>Claude agent</option><option value="grok" ' + selected(provider, "grok") + '>Grok agent</option></select>' + icon("chevron") + '</label> in <label class="inline-select folder-select">' + icon("folder") + '<select id="new-worktree-target">' + worktreeTargetOptions(workspace) + '</select>' + icon("chevron") + "</label></div>" +
-      '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Select code in an editor, then use <span class="tip-icon"><span class="codicon codicon-add" aria-hidden="true"></span></span> to attach it as precise feedback context.</div><div class="new-composer">' + contextChip() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span class="codicon codicon-sparkle" aria-hidden="true"></span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!state.newDraft.trim() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
+      '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Drag files or images into the prompt, or select code in an editor and use <span class="tip-icon"><span class="codicon codicon-add" aria-hidden="true"></span></span> for precise context.</div><div class="new-composer composer-drop-target" data-file-drop="true">' + contextChip() + composerAttachments() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span class="codicon codicon-sparkle" aria-hidden="true"></span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!hasComposerInput() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
       '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Unrestricted</option></select></label><label class="worktree-toggle unrestricted-toggle" title="Bypass provider approvals and sandbox restrictions"><input id="unrestricted-access" type="checkbox" role="switch" ' + (permission === "full-access" ? "checked" : "") + '><span>' + icon("warning") + '</span><b>Unrestricted</b></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label></div></div>' +
       branchSetup + '</section></main>';
   }
 
   function messageCard(message, session) {
     const roleName = ({ user: "You", assistant: providerName(session.provider), reasoning: "Reasoning", tool: message.title || "Tool", system: "System", error: message.title || "Error" })[message.role] || message.role;
-    const body = '<div class="message-body" data-message-id="' + attr(message.id) + '">' + formatMessage(message.content) + (message.state === "running" && message.role === "assistant" ? '<span class="stream-cursor"></span>' : "") + "</div>";
+    const body = '<div class="message-body" data-message-id="' + attr(message.id) + '">' + formatMessage(message.content) + messageAttachments(message) + (message.state === "running" && message.role === "assistant" ? '<span class="stream-cursor"></span>' : "") + "</div>";
     if (message.role === "tool" || message.role === "reasoning") {
       return '<details class="message-card compact-card" ' + (message.state === "running" ? "open" : "") + '><summary><span class="tool-state ' + attr(message.state || "completed") + '"></span><span>' + escapeHtml(roleName) + '</span><span class="summary-spacer"></span><span class="message-time">' + timeAgo(message.createdAt) + "</span></summary>" + body + "</details>";
     }
@@ -365,12 +508,12 @@
       : '<div class="empty-conversation">Agent ready on <strong>' + escapeHtml(session.workspace) + "</strong></div>";
     const runButton = running
       ? '<button class="stop-button" data-action="cancelRun">' + icon("stop") + " Stop</button>"
-      : '<button class="submit-arrow" data-action="sendPrompt">' + icon("send") + "</button>";
+      : '<button class="submit-arrow ' + (!hasComposerInput() ? "disabled" : "") + '" data-action="sendPrompt">' + icon("send") + "</button>";
     return '<main class="center-pane conversation-view">' +
       '<header class="conversation-header"><div><span class="eyebrow">' + escapeHtml(basename(session.workspace)) + " · " + escapeHtml(session.provider) + '</span><input id="session-title" value="' + attr(session.title) + '" aria-label="Agent title"></div>' +
       '<div class="header-actions"><button class="secondary-button" data-action="openWorktree" data-path="' + attr(session.workspace) + '">' + icon("window") + 'Open worktree</button><button class="icon-button" data-action="sessionMenu" data-session-id="' + attr(session.id) + '">' + icon("more") + "</button></div></header>" +
       '<div id="message-list" class="message-list">' + messages + "</div>" +
-      '<div class="conversation-composer-wrap"><div class="conversation-composer">' + contextChip() + '<textarea id="prompt-input" rows="1" placeholder="Give feedback or assign the next step…" ' + (running ? "disabled" : "") + ">" + escapeHtml(draft) + '</textarea><div><button class="composer-icon" data-action="captureEditorSelection" title="Attach editor selection">' + icon("add") + '</button><span class="composer-branch">' + icon("branch") + escapeHtml(state.snapshot.branch || basename(session.workspace)) + '</span><span class="permission-badge">' + escapeHtml(permissionName(session.permission)) + "</span>" + runButton + "</div></div></div></main>";
+      '<div class="conversation-composer-wrap"><div class="conversation-composer composer-drop-target" data-file-drop="true">' + contextChip() + composerAttachments() + '<textarea id="prompt-input" rows="1" placeholder="Give feedback or assign the next step…" ' + (running ? "disabled" : "") + ">" + escapeHtml(draft) + '</textarea><div><button class="composer-icon" data-action="captureEditorSelection" title="Attach editor selection">' + icon("add") + '</button><span class="composer-branch">' + icon("branch") + escapeHtml(state.snapshot.branch || basename(session.workspace)) + '</span><span class="permission-badge">' + escapeHtml(permissionName(session.permission)) + "</span>" + runButton + "</div></div></div></main>";
   }
 
   function worktreeView() {
@@ -698,9 +841,9 @@
 
   function createAndRun() {
     if (state.startingSession) return;
-    const prompt = state.newDraft.trim();
+    const prompt = attachmentPrompt();
     const workspace = state.newWorkspace || selectedWorktree()?.path;
-    if (!prompt || !workspace) {
+    if (!hasComposerInput() || !workspace) {
       showToast("Choose where to start and describe the task.", "error");
       return;
     }
@@ -714,6 +857,7 @@
       permission: state.newPermission || state.snapshot.config.defaultPermission,
       model: state.newModel,
       prompt: preparePrompt(prompt, state.newPermission || state.snapshot.config.defaultPermission),
+      attachments: state.attachments,
       newWorktree: state.newWorktree,
       newBranch: state.newBranch,
       baseBranch: state.newWorktree || state.newBranch ? defaultBaseBranch(startWorktree) : "",
@@ -723,10 +867,11 @@
 
   function sendPrompt() {
     const session = activeSession();
-    if (!session || session.status === "running" || !state.newDraft.trim()) return;
-    post("sendPrompt", { sessionId: session.id, prompt: preparePrompt(state.newDraft.trim(), session.permission) });
+    if (!session || session.status === "running" || !hasComposerInput()) return;
+    post("sendPrompt", { sessionId: session.id, prompt: preparePrompt(attachmentPrompt(), session.permission), attachments: state.attachments });
     state.newDraft = "";
     state.editorContext = null;
+    state.attachments = [];
     persist();
     render();
   }
@@ -789,6 +934,7 @@
         else if (action === "cancelRun") { const session = activeSession(); if (session) post("cancelRun", { sessionId: session.id }); }
         else if (action === "captureEditorSelection") post("captureEditorSelection");
         else if (action === "clearContext") { state.editorContext = null; render({ preserveFocus: true }); }
+        else if (action === "removeAttachment") { state.attachments = state.attachments.filter((item) => item.id !== button.dataset.attachmentId); render({ preserveFocus: true }); }
         else if (action === "rightTab") { state.rightTab = button.dataset.tab; persist(); render(); }
         else if (action === "toggleFileSearch") { state.fileSearchOpen = !state.fileSearchOpen; render(); requestAnimationFrame(() => document.getElementById("file-search")?.focus()); }
         else if (action === "toggleDirectory") toggleDirectory(button.dataset.path);
@@ -850,6 +996,29 @@
           event.preventDefault();
           newPrompt ? createAndRun() : sendPrompt();
         }
+      });
+    });
+
+    app.querySelectorAll("[data-file-drop]").forEach((composer) => {
+      composer.addEventListener("dragenter", (event) => {
+        if (!transferContainsFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        composer.classList.add("drag-active");
+      });
+      composer.addEventListener("dragover", (event) => {
+        if (!transferContainsFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        composer.classList.add("drag-active");
+      });
+      composer.addEventListener("dragleave", (event) => {
+        if (!event.relatedTarget || !composer.contains(event.relatedTarget)) composer.classList.remove("drag-active");
+      });
+      composer.addEventListener("drop", (event) => {
+        if (!transferContainsFiles(event.dataTransfer)) return;
+        event.preventDefault();
+        composer.classList.remove("drag-active");
+        void handleAttachmentDrop(event.dataTransfer);
       });
     });
 
@@ -918,7 +1087,9 @@
 
   function updateSubmitState() {
     const button = document.querySelector(".new-session-card .submit-arrow");
-    if (button) button.classList.toggle("disabled", !state.newDraft.trim() || state.startingSession);
+    if (button) button.classList.toggle("disabled", !hasComposerInput() || state.startingSession);
+    const chatButton = document.querySelector(".conversation-composer .submit-arrow");
+    if (chatButton) chatButton.classList.toggle("disabled", !hasComposerInput());
   }
 
   function beginResize(event) {
@@ -983,6 +1154,7 @@
         state.newDraft = "";
         state.newBranchName = "";
         state.editorContext = null;
+        state.attachments = [];
         state.view = "chat";
       }
       if (state.view === "chat" && !activeSession()) state.view = state.snapshot.worktrees.length ? "worktree" : "new";

@@ -30,6 +30,7 @@ through a VS Code chat provider.
   Agents-style history graph across every ref
 - One-click worktree opening in a separate VS Code window
 - Editor-selection context for targeted file-and-line feedback to an agent
+- Drag-and-drop image and file attachments in both new-agent and conversation prompts
 - Local session metadata persisted with mode `0600`
 - A status-bar toggle, editor-title toggle, command-palette commands, and
   `Cmd+Alt+A` / `Ctrl+Alt+A`
@@ -122,7 +123,8 @@ Development Host after changing the workbench JavaScript or CSS.
    the corresponding file in the selected worktree.
 5. Select a worktree and use **Open in VS Code** to work in it directly. Select
    lines in an editor and use the composer’s **+** button to attach those exact
-   lines to targeted agent feedback.
+   lines to targeted agent feedback. Drag local files or images onto either the
+   new-agent prompt or an active conversation prompt to attach them to the turn.
 6. Use `Cmd+Enter` on macOS or `Ctrl+Enter` elsewhere to submit a prompt.
 
 Use **Import local history** to scan the configured CLI user directories. An

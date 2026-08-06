@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildGrokArgs, grokPermissionArgs } from "../src/agentRunner";
+import { buildCodexArgs, buildGrokArgs, grokPermissionArgs } from "../src/agentRunner";
 import type { RunRequest } from "../src/types";
 
 function request(nativeSessionId?: string): RunRequest {
@@ -54,6 +54,33 @@ describe("Grok runner arguments", () => {
   it("lets resumed sessions restore their saved Grok sandbox profile", () => {
     expect(grokPermissionArgs("workspace-write", false)).toEqual([
       "--always-approve"
+    ]);
+  });
+});
+
+describe("Codex runner attachments", () => {
+  it("passes dropped images to new and resumed Codex turns", () => {
+    const base = request();
+    const codexRequest: RunRequest = {
+      ...base,
+      executable: "codex",
+      attachments: [
+        { name: "screen.png", path: "/repo/.attachments/screen.png", mimeType: "image/png", size: 42 },
+        { name: "diagram.svg", path: "/repo/.attachments/diagram.svg", mimeType: "image/svg+xml", size: 25 },
+        { name: "notes.txt", path: "/repo/.attachments/notes.txt", mimeType: "text/plain", size: 12 }
+      ],
+      session: { ...base.session, provider: "codex", model: "" }
+    };
+
+    expect(buildCodexArgs(codexRequest)).toEqual([
+      "exec", "--json", "-c", 'approval_policy="never"', "-c", 'sandbox_mode="workspace-write"',
+      "--image", "/repo/.attachments/screen.png", "--cd", "/repo", "--skip-git-repo-check", "-"
+    ]);
+
+    codexRequest.session.nativeSessionId = "codex-session";
+    expect(buildCodexArgs(codexRequest)).toEqual([
+      "exec", "resume", "--json", "-c", 'approval_policy="never"', "-c", 'sandbox_mode="workspace-write"',
+      "--image", "/repo/.attachments/screen.png", "codex-session", "-"
     ]);
   });
 });

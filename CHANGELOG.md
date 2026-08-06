@@ -17,3 +17,4 @@
 - Status-bar, editor-title, keyboard, Command Palette, and detached-window entry points
 - Focused workbench launch that hides sidebars without disturbing an existing terminal
 - Unified new-agent launcher with independent new/existing worktree and branch choices
+- Drag-and-drop file and image attachments for new and active agent prompts

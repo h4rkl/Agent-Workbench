@@ -153,8 +153,16 @@ export type AgentEvent =
 export interface RunRequest {
   session: AgentSession;
   prompt: string;
+  attachments?: AgentAttachment[];
   executable: string;
   userDirectory: string;
+}
+
+export interface AgentAttachment {
+  name: string;
+  path: string;
+  mimeType: string;
+  size: number;
 }
 
 export interface RunOutcome {
