@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, realpath } from "node:fs/promises";
 import * as path from "node:path";
 import { promisify } from "node:util";
 import * as vscode from "vscode";
@@ -72,6 +72,45 @@ export class GitService {
     return worktrees;
   }
 
+  public async removeWorktree(
+    workspace: string,
+    worktreePath: string
+  ): Promise<void> {
+    const worktrees = await this.listWorktrees(workspace);
+    let canonicalTarget = worktreePath;
+    try {
+      canonicalTarget = await realpath(worktreePath);
+    } catch {
+      // The known-worktree check below provides the user-facing error.
+    }
+    const target = worktrees.find(
+      (worktree) => worktree.path === canonicalTarget
+    );
+    if (!target) {
+      throw new Error("The selected worktree no longer exists.");
+    }
+    if (target.isMain) {
+      throw new Error("The primary worktree cannot be deleted.");
+    }
+    if (target.locked) {
+      throw new Error("Unlock this worktree before deleting it.");
+    }
+    if (target.dirtyCount > 0) {
+      throw new Error(
+        "Commit, stash, or discard this worktree's changes before deleting it."
+      );
+    }
+    const repository = worktrees.find((worktree) => worktree.isMain)?.path;
+    if (!repository) {
+      throw new Error("The primary worktree could not be found.");
+    }
+    await execFileAsync(
+      "git",
+      ["-C", repository, "worktree", "remove", target.path],
+      { encoding: "utf8", maxBuffer: 10 * 1024 * 1024 }
+    );
+  }
+
   public async listHistory(workspace: string, limit = 200): Promise<GitCommit[]> {
     const root = await this.repositoryRoot(workspace);
     if (!root) {
@@ -85,6 +124,7 @@ export class GitService {
           root,
           "log",
           "--all",
+          "--topo-order",
           `--max-count=${limit}`,
           "--date=iso-strict",
           "--pretty=format:%H%x1f%P%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%D%x1e"

@@ -13,6 +13,9 @@ export function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri
 ): string {
+  const gitgraphScriptUri = webview.asWebviewUri(
+    vscode.Uri.joinPath(extensionUri, "media", "gitgraph-core.js")
+  );
   const scriptUri = webview.asWebviewUri(
     vscode.Uri.joinPath(extensionUri, "media", "workbench.js")
   );
@@ -44,6 +47,7 @@ export function getWebviewHtml(
         <p>Starting Local Agent Workbench…</p>
       </div>
     </div>
+    <script nonce="${scriptNonce}" src="${gitgraphScriptUri}"></script>
     <script nonce="${scriptNonce}" src="${scriptUri}"></script>
   </body>
 </html>`;

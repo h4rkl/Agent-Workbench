@@ -24,6 +24,7 @@
     sessionFilter: saved.sessionFilter || "active",
     modal: null,
     menuSessionId: null,
+    worktreeMenu: null,
     nativeSessions: [],
     importLoading: false,
     startingSession: false,
@@ -106,7 +107,9 @@
       archive: "archive",
       trash: "trash",
       commit: "git-commit",
-      check: "check"
+      check: "check",
+      reveal: "folder-opened",
+      warning: "warning"
     };
     return codicon(names[name] || "file", label || name, "icon");
   }
@@ -154,7 +157,7 @@
   }
 
   function permissionName(permission) {
-    return ({ plan: "Plan", "read-only": "Read only", "workspace-write": "Default permissions", "full-access": "Full access" })[permission] || permission;
+    return ({ plan: "Plan", "read-only": "Read only", "workspace-write": "Default permissions", "full-access": "Unrestricted" })[permission] || permission;
   }
 
   function timeAgo(timestamp) {
@@ -317,7 +320,7 @@
     const branchSetup = '<div class="branch-setup"><span class="branch-setup-title">' + codicon("git-branch", "Branch", "icon") + '<strong>Start</strong></span>' + repositoryField + '<label class="branch-target"><span>Branch</span><span class="branch-select"><select id="new-branch-target">' + branchTargetOptions(currentWorktree, baseBranch) + '</select>' + icon("chevron") + '</span></label>' + branchFields + '</div><p class="new-session-note">' + escapeHtml(summary) + (state.newBranch ? " Leave the name blank to generate one from the task." : "") + "</p>";
     return '<main class="center-pane new-session-view"><div class="corner-agent">' + icon("agent") + '</div><section class="new-session-card"><div class="new-session-title">New <label class="inline-select provider-select">' + providerLogo(provider) + '<select id="new-provider"><option value="codex" ' + selected(provider, "codex") + '>Codex agent</option><option value="claude" ' + selected(provider, "claude") + '>Claude agent</option></select>' + icon("chevron") + '</label> in <label class="inline-select folder-select">' + icon("folder") + '<select id="new-worktree-target">' + worktreeTargetOptions(workspace) + '</select>' + icon("chevron") + "</label></div>" +
       '<div class="prompt-shell"><div class="tip-line"><strong>Tip:</strong> Select code in an editor, then use <span class="tip-icon"><span class="codicon codicon-add" aria-hidden="true"></span></span> to attach it as precise feedback context.</div><div class="new-composer">' + contextChip() + '<textarea id="new-prompt" rows="3" placeholder="What will this agent complete?">' + escapeHtml(state.newDraft) + '</textarea><div class="new-composer-footer"><div class="composer-tools"><button class="composer-icon" data-action="captureEditorSelection" title="Attach the current editor selection">' + icon("add") + '</button><span class="composer-mode">' + icon("agent") + 'Agent</span><label class="composer-mode model-control"><span class="codicon codicon-sparkle" aria-hidden="true"></span><input id="new-model" value="' + attr(state.newModel || state.snapshot.config.defaultModels[provider] || "") + '" placeholder="Auto" title="Optional model"></label></div><button class="submit-arrow ' + (!state.newDraft.trim() || state.startingSession || !health.available ? "disabled" : "") + '" data-action="createAndRun" title="' + attr(health.available ? "Start agent" : providerName(provider) + " CLI is unavailable") + '">' + (state.startingSession ? '<span class="run-spinner"></span>' : icon("send")) + "</button></div></div></div>" +
-      '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Full access</option></select></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label></div></div>' +
+      '<div class="new-meta"><div><span class="meta-control">' + icon("chat") + 'Interactive</span><label class="meta-control">' + icon("check") + '<select id="new-permission"><option value="plan" ' + selected(permission, "plan") + '>Plan only</option><option value="read-only" ' + selected(permission, "read-only") + '>Read only</option><option value="workspace-write" ' + selected(permission, "workspace-write") + '>Default permissions</option><option value="full-access" ' + selected(permission, "full-access") + '>Unrestricted</option></select></label><label class="worktree-toggle unrestricted-toggle" title="Bypass provider approvals and sandbox restrictions"><input id="unrestricted-access" type="checkbox" role="switch" ' + (permission === "full-access" ? "checked" : "") + '><span>' + icon("warning") + '</span><b>Unrestricted</b></label></div><div><label class="worktree-toggle ' + (!canCommit ? "disabled" : "") + '"><input id="auto-commit" type="checkbox" ' + (state.autoCommit && canCommit ? "checked" : "") + (!canCommit ? " disabled" : "") + '><span>' + icon("check") + '</span> Commit result</label></div></div>' +
       branchSetup + '</section></main>';
   }
 
@@ -377,28 +380,89 @@
     return '<button class="mini-commit" data-action="selectCommit" data-hash="' + attr(commit.hash) + '"><span class="commit-node"></span><span><strong>' + escapeHtml(commit.subject) + '</strong><small><code>' + escapeHtml(commit.hash.slice(0, 7)) + "</code> · " + escapeHtml(commit.author) + " · " + timeAgo(commit.date) + "</small></span>" + (commit.refs[0] ? '<span class="ref-label">' + escapeHtml(commit.refs[0].replace(/^HEAD -> /, "")) + "</span>" : "") + "</button>";
   }
 
-  function historyRows() {
-    const commits = state.snapshot.commits || [];
-    const lanes = [];
+  function normalizedGitgraphRefs(refs) {
+    return [...new Set((refs || []).flatMap((rawRef) => {
+      const ref = String(rawRef || "").trim();
+      if (!ref) return [];
+      if (ref.startsWith("HEAD -> ")) return ["HEAD", ref.slice(8)];
+      const symbolic = ref.match(/^.+ -> (.+)$/);
+      return symbolic ? [symbolic[1]] : [ref];
+    }))];
+  }
+
+  function gitgraphImportData(commits) {
+    const parentHashes = new Set(commits.flatMap((commit) => commit.parents || []));
     return commits.map((commit) => {
-      let lane = lanes.indexOf(commit.hash);
-      if (lane === -1) {
-        lane = lanes.findIndex((item) => !item);
-        if (lane === -1) lane = lanes.length;
+      const refs = normalizedGitgraphRefs(commit.refs);
+      const hasBranch = refs.some((ref) => ref !== "HEAD" && !ref.startsWith("tag: "));
+      if (!parentHashes.has(commit.hash) && !hasBranch) {
+        refs.push("detached/" + commit.hash.slice(0, 7));
       }
-      lanes[lane] = commit.parents[0] || null;
-      commit.parents.slice(1).forEach((parent) => {
-        if (!lanes.includes(parent)) lanes.splice(lane + 1, 0, parent);
+      const timestamp = new Date(commit.date).getTime();
+      return {
+        refs,
+        hash: commit.hash,
+        hashAbbrev: commit.hash.slice(0, 7),
+        parents: commit.parents || [],
+        parentsAbbrev: (commit.parents || []).map((parent) => parent.slice(0, 7)),
+        author: { name: commit.author, email: commit.email, timestamp },
+        committer: { name: commit.author, email: commit.email, timestamp },
+        subject: commit.subject,
+        body: ""
+      };
+    });
+  }
+
+  function gitgraphPresentation(commits) {
+    const rowHeight = state.snapshot.config.density === "compact" ? 45 : 51;
+    const fallback = { rowHeight, width: 82, svg: "" };
+    if (!commits.length || !globalThis.GitgraphCoreApi) return fallback;
+    try {
+      const api = globalThis.GitgraphCoreApi;
+      const template = api.templateExtend(api.TemplateName.Metro, {
+        colors: ["var(--agent-accent)", "#2ea8e5", "#e5a52e", "#a371f7", "#3fb950", "#f778ba"],
+        branch: { spacing: 17, lineWidth: 2 },
+        commit: {
+          spacing: rowHeight,
+          dot: { size: 9, strokeWidth: 2 },
+          message: { display: false }
+        }
       });
-      while (lanes.length && !lanes[lanes.length - 1]) lanes.pop();
-      const laneMarkup = Array.from({ length: Math.max(lanes.length, lane + 1, 1) }, (_, index) => '<span class="lane ' + (index === lane ? "current" : "") + '">' + (index === lane ? '<i></i>' : "") + "</span>").join("");
-      return '<button class="history-row ' + (state.selectedCommit === commit.hash ? "active" : "") + '" data-action="selectCommit" data-hash="' + attr(commit.hash) + '"><span class="graph-cell" style="--lane:' + lane + '">' + laneMarkup + '</span><span class="commit-copy"><strong>' + escapeHtml(commit.subject) + '<span class="commit-refs">' + commit.refs.slice(0, 3).map((ref) => '<em>' + escapeHtml(ref.replace(/^HEAD -> /, "")) + "</em>").join("") + '</span></strong><small><code>' + escapeHtml(commit.hash.slice(0, 8)) + "</code><span>" + escapeHtml(commit.author) + "</span><span>" + timeAgo(commit.date) + "</span></small></span></button>";
+      const core = new api.GitgraphCore({
+        template,
+        initCommitOffsetX: 16,
+        initCommitOffsetY: rowHeight / 2
+      });
+      core.getUserApi().import(gitgraphImportData(commits));
+      const rendered = core.getRenderedData();
+      const paths = Array.from(rendered.branchesPaths).map(([branch, points]) => {
+        const path = api.toSvgPath(points, true, true);
+        return '<path d="' + attr(path) + '" fill="none" stroke="' + attr(branch.computedColor || branch.style.color || "var(--agent-accent)") + '" stroke-width="' + (branch.style.lineWidth || 2) + '" stroke-linecap="round" stroke-linejoin="round"></path>';
+      }).join("");
+      const dots = rendered.commits.map((commit) => '<circle data-gitgraph-hash="' + attr(commit.hash) + '" cx="' + commit.x + '" cy="' + commit.y + '" r="' + Math.max(3, (commit.style.dot.size || 8) / 2) + '" fill="var(--vscode-editor-background)" stroke="' + attr(commit.style.color || "var(--agent-accent)") + '" stroke-width="' + (commit.style.dot.strokeWidth || 2) + '"></circle>').join("");
+      const maxX = rendered.commits.reduce((maximum, commit) => Math.max(maximum, commit.x), 0);
+      const width = clamp(maxX + 34, 82, 260);
+      return {
+        rowHeight,
+        width,
+        svg: '<svg class="gitgraph-canvas" width="' + width + '" height="' + (commits.length * rowHeight) + '" viewBox="0 0 ' + width + " " + (commits.length * rowHeight) + '" aria-hidden="true">' + paths + dots + "</svg>"
+      };
+    } catch {
+      return fallback;
+    }
+  }
+
+  function historyRows(commits) {
+    return commits.map((commit, index) => {
+      return '<button class="history-row ' + (index === 0 ? "latest " : "") + (state.selectedCommit === commit.hash ? "active" : "") + '" data-action="selectCommit" data-hash="' + attr(commit.hash) + '"><span class="gitgraph-slot"></span><span class="commit-copy"><strong>' + escapeHtml(commit.subject) + '<span class="commit-refs">' + commit.refs.slice(0, 3).map((ref) => '<em>' + escapeHtml(ref.replace(/^HEAD -> /, "")) + "</em>").join("") + '</span></strong><small><code>' + escapeHtml(commit.hash.slice(0, 8)) + "</code><span>" + escapeHtml(commit.author) + "</span><span>" + timeAgo(commit.date) + "</span></small></span></button>";
     }).join("");
   }
 
   function historyView() {
-    const rows = state.snapshot.commits.length ? historyRows() : '<div class="history-empty">No Git history was found for this workspace.</div>';
-    return `<main class="center-pane history-view"><header class="history-header"><div><span class="eyebrow">Repository</span><h1>Version history</h1><p>Commits across every branch and agent worktree.</p></div><div class="header-actions"><button class="secondary-button" data-action="refreshRepository">${icon("refresh")}Refresh</button></div></header><div class="history-column-header"><span>Graph</span><span>Commit</span></div><div class="history-list">${rows}</div></main>`;
+    const commits = state.snapshot.commits || [];
+    const graph = gitgraphPresentation(commits);
+    const rows = commits.length ? graph.svg + historyRows(commits) : '<div class="history-empty">No Git history was found for this workspace.</div>';
+    return `<main class="center-pane history-view" style="--history-graph-width:${graph.width}px;--history-row-height:${graph.rowHeight}px"><header class="history-header"><div><span class="eyebrow">Repository</span><h1>Version history</h1><p>Commits across every branch and agent worktree.</p></div><div class="header-actions"><button class="secondary-button" data-action="refreshRepository">${icon("refresh")}Refresh</button></div></header><div class="history-column-header"><span>Graph</span><span>Commit</span></div><div class="history-list">${rows}</div></main>`;
   }
 
   function centerPane() {
@@ -457,6 +521,33 @@
     return "";
   }
 
+  function worktreeContextMenu() {
+    const menu = state.worktreeMenu;
+    if (!menu || !state.snapshot) return "";
+    const worktree = state.snapshot.worktrees.find((item) => item.path === menu.path);
+    if (!worktree) return "";
+    const agents = sessionsForWorktree(worktree.path);
+    const deleteReason = worktree.isMain
+      ? "The primary worktree cannot be deleted"
+      : worktree.locked
+        ? "Unlock this worktree before deleting it"
+        : worktree.dirtyCount
+          ? "Commit, stash, or discard changes before deleting"
+          : agents.length
+            ? "Archive or delete this worktree's agents first"
+            : "Delete this worktree; its branch will be kept";
+    const canDelete = !worktree.isMain && !worktree.locked && !worktree.dirtyCount && !agents.length;
+    return '<div class="context-menu-layer" data-action="closeWorktreeMenu"><div class="worktree-context-menu" role="menu" aria-label="Actions for ' + attr(worktree.branch) + '" style="left:' + menu.x + 'px;top:' + menu.y + 'px" data-context-menu>' +
+      '<div class="context-menu-heading"><strong>' + escapeHtml(worktree.branch) + '</strong><small>' + escapeHtml(shortPath(worktree.path)) + '</small></div>' +
+      '<button role="menuitem" data-action="contextOpenWorktree" data-path="' + attr(worktree.path) + '">' + icon("window") + '<span>Open in New Window</span></button>' +
+      '<button role="menuitem" data-action="contextNewAgent" data-path="' + attr(worktree.path) + '">' + icon("add") + '<span>New Agent Here</span></button>' +
+      '<button role="menuitem" data-action="revealWorktree" data-path="' + attr(worktree.path) + '">' + icon("reveal") + '<span>Reveal in File Manager</span></button>' +
+      '<button role="menuitem" data-action="copyWorktreePath" data-path="' + attr(worktree.path) + '">' + icon("copy") + '<span>Copy Worktree Path</span></button>' +
+      '<div class="context-menu-separator" role="separator"></div>' +
+      '<button class="danger-action" role="menuitem" data-action="deleteWorktree" data-path="' + attr(worktree.path) + '" title="' + attr(deleteReason) + '" ' + (canDelete ? "" : "disabled") + '>' + icon("trash") + '<span>Delete Worktree</span></button>' +
+      '</div></div>';
+  }
+
   function render(options) {
     if (!state.snapshot) return;
     const focusId = options && options.preserveFocus && document.activeElement && document.activeElement.id;
@@ -465,7 +556,7 @@
     app.style.setProperty("--left-width", state.leftWidth + "px");
     app.style.setProperty("--right-width", state.rightWidth + "px");
     app.style.setProperty("--agent-accent", state.snapshot.config.accent);
-    app.innerHTML = '<div class="workbench-grid">' + sidebar() + '<div class="resize-handle" data-resize="left"></div>' + centerPane() + '<div class="resize-handle" data-resize="right"></div>' + rightPane() + '</div>' + modal() + '<div id="toast-region" class="toast-region" aria-live="assertive"></div>';
+    app.innerHTML = '<div class="workbench-grid">' + sidebar() + '<div class="resize-handle" data-resize="left"></div>' + centerPane() + '<div class="resize-handle" data-resize="right"></div>' + rightPane() + '</div>' + modal() + worktreeContextMenu() + '<div id="toast-region" class="toast-region" aria-live="assertive"></div>';
     attachListeners();
     if (focusId) {
       const target = document.getElementById(focusId);
@@ -505,6 +596,22 @@
     state.newPermission = state.newPermission || state.snapshot.config.defaultPermission;
     persist();
     render();
+    requestAnimationFrame(() => document.getElementById("new-prompt")?.focus());
+  }
+
+  function openNewForWorktree(pathValue) {
+    const worktree = state.snapshot.worktrees.find((item) => item.path === pathValue);
+    if (!worktree) return;
+    state.worktreeMenu = null;
+    state.snapshot.selectedWorktreePath = worktree.path;
+    state.newWorkspace = worktree.path;
+    state.newWorktree = false;
+    state.newBranch = false;
+    state.newBaseBranch = worktree.branch;
+    state.view = "new";
+    persist();
+    render();
+    post("selectWorktree", { path: worktree.path });
     requestAnimationFrame(() => document.getElementById("new-prompt")?.focus());
   }
 
@@ -568,6 +675,7 @@
   }
 
   function selectWorktree(pathValue) {
+    state.worktreeMenu = null;
     state.snapshot.selectedWorktreePath = pathValue;
     state.view = "worktree";
     state.directories = new Map();
@@ -602,6 +710,7 @@
         const button = event.currentTarget;
         const action = button.dataset.action;
         if (action === "closeModal" && button.classList.contains("modal-backdrop") && event.target !== button) return;
+        if (action === "closeWorktreeMenu" && event.target !== button) return;
         if (action === "openNew") openNew(button.dataset.worktree !== "false");
         else if (action === "selectWorktree") selectWorktree(button.dataset.path);
         else if (action === "selectSession") { state.view = "chat"; persist(); post("selectSession", { sessionId: button.dataset.sessionId }); }
@@ -620,6 +729,12 @@
         else if (action === "openDiff") post("openDiff", { path: button.dataset.path });
         else if (action === "refreshRepository") post("refreshRepository");
         else if (action === "openWorktree") post("openWorktree", { path: button.dataset.path || state.snapshot.selectedWorktreePath, newWindow: true });
+        else if (action === "contextOpenWorktree") { state.worktreeMenu = null; render({ preserveFocus: true }); post("openWorktree", { path: button.dataset.path, newWindow: true }); }
+        else if (action === "contextNewAgent") openNewForWorktree(button.dataset.path);
+        else if (action === "revealWorktree") { state.worktreeMenu = null; render({ preserveFocus: true }); post("revealWorktree", { path: button.dataset.path }); }
+        else if (action === "copyWorktreePath") { state.worktreeMenu = null; render({ preserveFocus: true }); post("copyWorktreePath", { path: button.dataset.path }); }
+        else if (action === "deleteWorktree") { state.worktreeMenu = null; render({ preserveFocus: true }); post("deleteWorktree", { path: button.dataset.path }); }
+        else if (action === "closeWorktreeMenu") { state.worktreeMenu = null; render({ preserveFocus: true }); }
         else if (action === "selectCommit") selectCommit(button.dataset.hash);
         else if (action === "settings") post("openSettings");
         else if (action === "output") post("showOutput");
@@ -633,6 +748,27 @@
         else if (action === "import") { state.modal = "import"; state.importLoading = true; state.nativeSessions = []; render(); post("discoverNative"); }
         else if (action === "discoverNative") { state.importLoading = true; render(); post("discoverNative"); }
         else if (action === "importNative") { post("importNative", { key: button.dataset.key }); closeModal(); }
+      });
+    });
+
+    app.querySelectorAll(".worktree-row").forEach((element) => {
+      const showMenu = (event) => {
+        event.preventDefault();
+        const x = clamp(event.clientX, 6, Math.max(6, window.innerWidth - 254));
+        const y = clamp(event.clientY, 6, Math.max(6, window.innerHeight - 230));
+        state.worktreeMenu = { path: element.dataset.path, x, y };
+        render({ preserveFocus: true });
+        requestAnimationFrame(() => document.querySelector(".worktree-context-menu button")?.focus());
+      };
+      element.addEventListener("contextmenu", showMenu);
+      element.addEventListener("keydown", (event) => {
+        if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+        const bounds = element.getBoundingClientRect();
+        showMenu({
+          preventDefault: () => event.preventDefault(),
+          clientX: bounds.left + 20,
+          clientY: bounds.top + Math.min(bounds.height, 32)
+        });
       });
     });
 
@@ -654,6 +790,7 @@
     const permission = document.getElementById("new-permission");
     const model = document.getElementById("new-model");
     const autoCommit = document.getElementById("auto-commit");
+    const unrestrictedAccess = document.getElementById("unrestricted-access");
     const branchTarget = document.getElementById("new-branch-target");
     const baseBranch = document.getElementById("new-base-branch");
     const branchName = document.getElementById("new-branch-name");
@@ -675,6 +812,11 @@
     if (permission) permission.addEventListener("change", () => { state.newPermission = permission.value; if (permission.value === "plan" || permission.value === "read-only") state.autoCommit = false; persist(); render({ preserveFocus: true }); });
     if (model) model.addEventListener("input", () => { state.newModel = model.value; persist(); });
     if (autoCommit) autoCommit.addEventListener("change", () => { state.autoCommit = autoCommit.checked; persist(); });
+    if (unrestrictedAccess) unrestrictedAccess.addEventListener("change", () => {
+      state.newPermission = unrestrictedAccess.checked ? "full-access" : "workspace-write";
+      persist();
+      render({ preserveFocus: true });
+    });
     if (branchTarget) branchTarget.addEventListener("change", () => {
       state.newBranch = branchTarget.value === "__new__";
       if (state.newBranch && !state.newWorktree) {
@@ -825,6 +967,10 @@
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape" && state.modal) closeModal();
+    else if (event.key === "Escape" && state.worktreeMenu) {
+      state.worktreeMenu = null;
+      render({ preserveFocus: true });
+    }
     if ((event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "n") {
       event.preventDefault();
       if (state.snapshot) openNew(true);

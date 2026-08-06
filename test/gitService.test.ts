@@ -102,6 +102,32 @@ describe("GitService worktree orchestration", () => {
     })).rejects.toThrow("Branch stable is already checked out");
   });
 
+  it("removes a clean linked worktree without deleting its branch", async () => {
+    const service = new GitService();
+    const created = await service.createWorktree(repository, "Disposable task", {
+      branchName: "codex/disposable-task"
+    });
+
+    await service.removeWorktree(repository, created.workspace);
+
+    await expect(service.listWorktrees(repository)).resolves.toEqual([
+      expect.objectContaining({ branch: "main", isMain: true })
+    ]);
+    await expect(service.listBranches(repository)).resolves.toContain(created.branch);
+    await expect(service.removeWorktree(repository, repository))
+      .rejects.toThrow("primary worktree cannot be deleted");
+  });
+
+  it("refuses to remove a worktree with uncommitted changes", async () => {
+    const service = new GitService();
+    const created = await service.createWorktree(repository, "Keep local changes");
+    await writeFile(join(created.workspace, "notes.txt"), "keep me\n", "utf8");
+
+    await expect(service.removeWorktree(repository, created.workspace))
+      .rejects.toThrow("Commit, stash, or discard");
+    await expect(service.listWorktrees(repository)).resolves.toHaveLength(2);
+  });
+
   it("creates a new branch inside a clean existing worktree", async () => {
     const service = new GitService();
     const created = await service.createBranch(repository, "Continue here", {

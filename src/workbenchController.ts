@@ -433,6 +433,15 @@ export class WorkbenchController implements vscode.Disposable {
         case "openWorktree":
           await this.openWorktree(message);
           break;
+        case "revealWorktree":
+          await this.revealWorktree(message);
+          break;
+        case "copyWorktreePath":
+          await this.copyWorktreePath(message);
+          break;
+        case "deleteWorktree":
+          await this.deleteWorktree(message);
+          break;
         case "captureEditorSelection":
           await this.captureEditorSelection();
           break;
@@ -1008,6 +1017,81 @@ export class WorkbenchController implements vscode.Disposable {
     });
   }
 
+  private knownWorktree(worktreePath: string | undefined): WorktreeInfo {
+    const worktree = this.worktrees.find((item) => item.path === worktreePath);
+    if (!worktree) {
+      throw new Error("Choose a known worktree first.");
+    }
+    return worktree;
+  }
+
+  private async revealWorktree(message: WebviewMessage): Promise<void> {
+    const worktree = this.knownWorktree(stringField(message, "path"));
+    await vscode.commands.executeCommand(
+      "revealFileInOS",
+      vscode.Uri.file(worktree.path)
+    );
+  }
+
+  private async copyWorktreePath(message: WebviewMessage): Promise<void> {
+    const worktree = this.knownWorktree(stringField(message, "path"));
+    await vscode.env.clipboard.writeText(worktree.path);
+    await this.panel?.webview.postMessage({
+      type: "notification",
+      level: "info",
+      message: "Worktree path copied."
+    });
+  }
+
+  private async deleteWorktree(message: WebviewMessage): Promise<void> {
+    const worktree = this.knownWorktree(stringField(message, "path"));
+    if (worktree.isMain) {
+      throw new Error("The primary worktree cannot be deleted.");
+    }
+    const attachedSessions = this.sessions.filter(
+      (session) => session.workspace === worktree.path && session.status !== "archived"
+    );
+    if (attachedSessions.length > 0) {
+      throw new Error(
+        `Archive or delete ${attachedSessions.length === 1 ? "the agent" : `the ${attachedSessions.length} agents`} on this worktree first.`
+      );
+    }
+    if (worktree.dirtyCount > 0) {
+      throw new Error(
+        "Commit, stash, or discard this worktree's changes before deleting it."
+      );
+    }
+    if (worktree.locked) {
+      throw new Error("Unlock this worktree before deleting it.");
+    }
+    const choice = await vscode.window.showWarningMessage(
+      `Delete worktree '${worktree.branch}' at ${worktree.path}? Its Git branch and commit history will be kept.`,
+      { modal: true },
+      "Delete Worktree"
+    );
+    if (choice !== "Delete Worktree") {
+      return;
+    }
+    const primary = this.worktrees.find((item) => item.isMain);
+    if (!primary) {
+      throw new Error("The primary worktree could not be found.");
+    }
+    await this.git.removeWorktree(primary.path, worktree.path);
+    if (this.selectedWorktreePath === worktree.path) {
+      this.selectedWorktreePath = primary.path;
+      if (this.getActiveSession()?.workspace === worktree.path) {
+        this.activeSessionId = undefined;
+      }
+    }
+    await Promise.all([this.refreshWorkspaceData(), this.queueSave()]);
+    await this.postSnapshot();
+    await this.panel?.webview.postMessage({
+      type: "notification",
+      level: "info",
+      message: `Deleted worktree '${worktree.branch}'. The branch was kept.`
+    });
+  }
+
   private async captureEditorSelection(): Promise<void> {
     const editor = vscode.window.activeTextEditor;
     const context = editor ? this.editorContext(editor) : this.lastEditorContext;
@@ -1157,12 +1241,12 @@ export class WorkbenchController implements vscode.Disposable {
       return;
     }
     const selected = await vscode.window.showWarningMessage(
-      "Full access disables the provider sandbox and approval prompts. The agent can execute arbitrary commands and modify files outside the workspace.",
+      "Unrestricted access bypasses the provider sandbox and approval prompts. The agent can execute arbitrary commands and modify files outside the workspace.",
       { modal: true },
-      "Enable Full Access"
+      "Run Unrestricted"
     );
-    if (selected !== "Enable Full Access") {
-      throw new Error("Full-access run cancelled.");
+    if (selected !== "Run Unrestricted") {
+      throw new Error("Unrestricted run cancelled.");
     }
     await this.context.globalState.update(confirmationKey, true);
   }

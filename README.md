@@ -169,12 +169,12 @@ The extension starts Claude with `CLAUDE_CONFIG_DIR` and Codex with
 | Plan           | Read-only Codex sandbox        | `plan` permission mode                                |
 | Read only      | Read-only Codex sandbox        | `dontAsk`, with edit/write/notebook/Bash tools denied |
 | Workspace      | Workspace-write Codex sandbox  | `acceptEdits` permission mode                         |
-| Full access    | Bypasses approvals and sandbox | Skips permission checks                               |
+| Unrestricted   | Bypasses approvals and sandbox | Skips permission checks                               |
 
 Claude Code does not expose a Codex-equivalent filesystem sandbox. Its
 `acceptEdits` boundary is therefore governed by Claude's permission system and
-your Claude settings; treat it differently from Codex's OS sandbox. Full access
-is intentionally guarded by a modal confirmation per workspace.
+your Claude settings; treat it differently from Codex's OS sandbox.
+Unrestricted access is intentionally guarded by a modal confirmation per workspace.
 
 The extension also asks you to trust a workspace before its first agent run.
 
